@@ -1,0 +1,12 @@
+
+Error at line 4:
+
+^ : syntax error, unexpected oCOMMA, expecting oRB 
+
+Error at line 8:
+
+^ : syntax error, unexpected oCOMMA, expecting oRP 
+
+Error at line 11:
+
+^ : Undeclared array name a

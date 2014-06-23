@@ -1,5 +1,4 @@
 %{
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,12 +7,6 @@
 #include "symtab.h"
 #include "error.h"
 #include "tree.h"
-
-#ifdef _MSDOS_
-#include "debug.h"
-#include "type.h"
-#endif
-
 #include "x86.h"
 
 extern char *yytext;
@@ -31,8 +24,6 @@ Env main_env;
 
 Symtab	rtn = NULL;
 Symbol	arg = NULL;
-
-#ifdef GENERATE_AST
 
 Tree pop_ast_stack();
 Tree top_ast_stack();
@@ -62,44 +53,18 @@ Symbol	new_label = NULL;
 Symbol	test_label = NULL;
 Symbol  exit_label = NULL;
 char 	mini_buf[NAME_LEN];			/* buffer for generated name. */
-int		if_label_count;				/* count for label of if test. */
-int		repeat_label_count;			/* count for label of repeat. */
-int		case_label_count;			/* count for label of case. */
-int		switch_label_count;			/* count for label of switch. */
-int		do_label_count;				/* count for label of do. */
-int		while_label_count;			/* count for label of while. */
-int		for_label_count;			/* count for label of for. */
-
-#endif
+int	if_label_count;				/* count for label of if test. */
+int	repeat_label_count;			/* count for label of repeat. */
+int	case_label_count;			/* count for label of case. */
+int	switch_label_count;			/* count for label of switch. */
+int	do_label_count;				/* count for label of do. */
+int	while_label_count;			/* count for label of while. */
+int	for_label_count;			/* count for label of for. */
 
 int parser_init();
 
 Symbol install_temporary_symbol(char *name, int deftype, int typeid);
 Type install_temporary_type(char *name, int deftype, int typeid);
-
-void trap_in_debug();
-
-#ifdef DEBUG
-#define DEBUG_POINT	trap_in_debug();
-#endif
-
-#if 0
-
-#ifndef GENERATE_AST
-
-%type  <num>proc_stmt assign_stmt
-%type  <num>expression expression_list
-%type  <p_symbol>factor term expr
-
-#else
-
-%type  <p_tree>proc_stmt assign_stmt
-%type  <p_tree>factor term expr
-%type  <p_tree>expression expression_list
-
-#endif
-
-#endif
 
 %}
 
@@ -115,41 +80,13 @@ void trap_in_debug();
 
 %error-verbose
 
-%term kAND
-%term kARRAY
-%term kBEGIN
-%term kCASE
-%term kCONST
-%term kDIV
-%term kDO
-%term kDOWNTO
-%term kELSE
-%term kEND
-%term kFILE
-%term kFOR
-%term kFUNCTION
-%term kGOTO
-%term kIF
-%term kIN
-%term kLABEL
-%term kMOD
-%term kNIL
-%term kNOT
-%term kOF
-%term kOR
-%term kPACKED
-%term kPROCEDURE
-%term kPROGRAM
-%term kRECORD
-%term kREPEAT
-%term kSET
-%term kTHEN
-%term kTO
-%term kTYPE
-%term kUNTIL
-%term kVAR
-%term kWHILE
-%term kWITH
+%term kAND kARRAY kBEGIN kCASE kCONST
+%term kDIV kDO kDOWNTO kELSE kEND
+%term kFILE kFOR kFUNCTION kGOTO kIF
+%term kIN kLABEL kMOD kNIL kNOT
+%term kOF kOR kPACKED kPROCEDURE kPROGRAM
+%term kRECORD kREPEAT kSET kTHEN kTO
+%term kTYPE kUNTIL kVAR kWHILE kWITH
 %term <num>SYS_CON
 %term cFALSE
 %term cTRUE
@@ -187,10 +124,7 @@ void trap_in_debug();
 %term  oEQUAL
 %term  oASSIGN
 %term  oUNEQU
-%term  oLT
-%term  oLE
-%term  oGT
-%term  oGE
+%term  oLT  oLE  oGT  oGE
 %term  oCOMMA
 %term  oSEMI
 %term  oCOLON
@@ -198,12 +132,7 @@ void trap_in_debug();
 %term  oDOT
 %term  oDOTDOT
 %term  oARROW
-%term  oLP
-%term  oRP
-%term  oLB
-%term  oRB
-%term  oLC
-%term  oRC
+%term  oLP  oRP  oLB  oRB  oLC  oRC
 %term  <p_char>yNAME
 
 %type  <p_symbol>const_value
@@ -224,14 +153,15 @@ void trap_in_debug();
 %%
 
 program
-:first_act_at_prog program_head sub_program oDOT
+:init program_head routine oDOT
 {
-	//dump_symtab(Global_symtab);
 	pop_symtab_stack();
-#ifdef GENERATE_AST
+
 	if (!err_occur())
 	{
+		/*init for DAG*/
 		list_clear(&dag_forest);
+		/*TAIL -> end of program*/
 		t = new_tree(TAIL, NULL, NULL, NULL);
 		t->u.generic.symtab = top_symtab_stack();
 		list_append(&ast_forest, t);
@@ -247,15 +177,12 @@ program
 		/* call end interface. */
 		(*(IR->program_end))(&global_env);
 	}
-#else
-	emit_main_epilogue(Global_symtab);
-	emit_program_epilogue(Global_symtab);
-#endif
+
 	return 0;
 }
 ;
 
-first_act_at_prog
+init
 :   
 {
 	parser_init();
@@ -270,58 +197,25 @@ program_head
 	strcpy(Global_symtab->name, $2);
 	snprintf(Global_symtab->rname, sizeof(Global_symtab->rname), "main");
 	Global_symtab->defn = DEF_PROG;
-#ifdef GENERATE_AST
+
 	global_env.u.program.tab = Global_symtab;
 	/* call initialization interface. */
 	(*(IR->program_begin))(&global_env);
-#else
-	emit_program_prologue(Global_symtab);
-#endif
-
 }
 |error oSEMI
 ;
 
-sub_program
+routine
 :routine_head
 {
-#ifdef GENERATE_AST
 	main_env.u.main.tab = Global_symtab;
 	(*(IR->main_begin))(&main_env);
 	list_clear(&ast_forest);
 	list_clear(&para_list);
 	
 	push_symtab_stack(Global_symtab);
-	/*
-	ptab = top_symtab_stack();
-	strncpy(ptab->name, $3, NAME_LEN);
-	sprintf(ptab->rname, "rtn%03d",ptab->id);
-	ptab->defn = DEF_PROC;
-	p = new_symbol($3, DEF_PROC, TYPE_VOID);
-	add_symbol_to_table(ptab,p);
-	reverse_parameters(ptab);
-	{
-		Tree header;
-		
-		header = new_tree(HEADER, find_type_by_id(TYPE_VOID), NULL, NULL); 
-		header->u.header.para = &para_list;
-		list_append(&ast_forest, header);
-		now_function = new_tree(ROUTINE, find_type_by_id(TYPE_VOID), header, NULL);
-	}
-
-	ptab = new_symtab(top_symtab_stack());
-	push_symtab_stack(ptab);
-	*/
-
-#else
-	emit_main_prologue(Global_symtab);
-#endif
-
 }
-routine_body
-{
-}
-;
+routine_body {};
 
 name_list
 :name_list oCOMMA yNAME 
@@ -344,19 +238,9 @@ sub_routine
 :routine_head routine_body
 ;
 
-routine_head
-:label_part const_part type_part var_part routine_part
-{
-#ifdef GENERATE_AST
-#else
-	emit_routine_prologue(top_symtab_stack());
-#endif
-}
-;
+routine_head:label_part const_part type_part var_part routine_part {};
 
-label_part
-:
-;
+label_part: ;
 
 const_part
 :kCONST const_expr_list
@@ -718,7 +602,6 @@ routine_part
 function_decl
 :function_head oSEMI sub_routine oSEMI 
 {
-#ifdef GENERATE_AST
 	if (!err_occur())
 	{
 		
@@ -733,9 +616,6 @@ function_decl
 		/* emit asm code. */
 		emit_code(&dag_forest);
 	}
-#else
-	emit_routine_epilogue(top_symtab_stack());
-#endif
 
 	pop_symtab_stack();
 }
@@ -744,10 +624,8 @@ function_decl
 function_head
 :kFUNCTION
 {
-#ifdef GENERATE_AST
 	list_clear(&ast_forest);
 	list_clear(&para_list);
-#endif
 
 	ptab = new_symtab(top_symtab_stack());
 	push_symtab_stack(ptab);
@@ -771,7 +649,7 @@ simple_type_decl
 	p->type_link = $6;
 	add_symbol_to_table(ptab, p);
 	reverse_parameters(ptab);
-#ifdef GENERATE_AST
+
 	{
 		Tree header;
 		
@@ -781,14 +659,13 @@ simple_type_decl
 		list_append(&ast_forest, header);
 		now_function = new_tree(FUNCTION, ptab->type, header, NULL);
 	}
-#endif	
+
 }
 ;
 
 procedure_decl
 :procedure_head oSEMI sub_routine oSEMI
 {
-#ifdef GENERATE_AST
 	{
 		list_clear(&dag_forest);
 		t = new_tree(TAIL, NULL, NULL, NULL);
@@ -800,9 +677,6 @@ procedure_decl
 		/* emit asm code. */
 		emit_code(&dag_forest);
 	}
-#else
-	emit_routine_epilogue(top_symtab_stack());
-#endif
 
 	pop_symtab_stack();
 }
@@ -811,13 +685,10 @@ procedure_decl
 procedure_head
 :kPROCEDURE
 {
-#ifdef GENERATE_AST
+
 	list_clear(&ast_forest);
 	list_clear(&para_list);
-#endif
 
-	ptab = new_symtab(top_symtab_stack());
-	push_symtab_stack(ptab);
 }
 yNAME parameters
 {
@@ -829,16 +700,12 @@ yNAME parameters
 	add_symbol_to_table(ptab,p);
 	reverse_parameters(ptab);
 
-#ifdef GENERATE_AST
-	{
-		Tree header;
+	Tree header;
 		
-		header = new_tree(HEADER, find_type_by_id(TYPE_VOID), NULL, NULL);
-		header->u.header.para = &para_list;
-		list_append(&ast_forest, header);
-		now_function = new_tree(ROUTINE, find_type_by_id(TYPE_VOID), header, NULL);
-	}
-#endif	
+	header = new_tree(HEADER, find_type_by_id(TYPE_VOID), NULL, NULL);
+	header->u.header.para = &para_list;
+	list_append(&ast_forest, header);
+	now_function = new_tree(ROUTINE, find_type_by_id(TYPE_VOID), header, NULL);
 }
 ;
 
@@ -874,10 +741,10 @@ para_type_list
 		q = p; p = p->next;
 		q->next = NULL;
 		add_symbol_to_table(ptab,q);
-#ifdef GENERATE_AST
+
 		/* append to paralist. */
 		list_append(&para_list, q);
-#endif
+
 	}
 
 	$1 = NULL;
@@ -897,10 +764,10 @@ para_type_list
 		q = p; p = p->next;
 		q->next=NULL;
 		add_symbol_to_table(ptab,q);
-#ifdef GENERATE_AST
+
 		/* append to para_list. */
 		list_append(&para_list, q);
-#endif
+
 	}
 	$1 = NULL;
 }
@@ -963,11 +830,9 @@ assign_stmt
 
 	if (p && p->defn != DEF_FUNCT)
 	{
-	#ifdef GENERATE_AST
+	
 		if(p->type->type_id != $3->result_type->type_id)
-	#else
-		if(p->type->type_id != $3)
-	#endif
+
 		{
 			parse_error("type mismatch","");
 			/* return 0; */
@@ -978,11 +843,7 @@ assign_stmt
 		ptab = find_routine($1);
 		if(ptab)
 		{
-		#ifdef GENERATE_AST
 			if(ptab->type->type_id != $3->result_type->type_id)
-		#else
-			if(ptab->type->type_id != $3)
-		#endif
 			{
 				parse_error("type mismatch","");
 				/* return 0; */
@@ -990,33 +851,19 @@ assign_stmt
 		}
 		else{
 			parse_error("Undeclared identifier.",$1);
-		#ifdef GENERATE_AST
+		
 			install_temporary_symbol($1, DEF_VAR, $3->result_type->type_id);
-		#else
-			install_temporary_symbol($1, DEF_VAR, $3);
-		#endif
+
 			/* return 0; */
 		}
 	}
 
-#ifdef GENERATE_AST
+
 	t = address_tree(NULL, p);
 	$$ = assign_tree(t, $3);
 	
 	/* append to forest. */
 	list_append(&ast_forest, $$);
-	
-#else
-	
-	if (p && p->defn != DEF_FUNCT)
-	{
-		do_assign(p, $3);
-	}
-	else
-	{
-		do_function_assign(ptab, $3);
-	}
-#endif
 }
 |yNAME oLB
 {
@@ -1027,16 +874,11 @@ assign_stmt
 	}
 	
 	push_term_stack(p);
-#ifdef GENERATE_AST
-#else
-	emit_load_address(p);
-	emit_push_op(TYPE_INTEGER);
-#endif
 }
 expression oRB
 {
 	p = top_term_stack();
-#ifdef GENERATE_AST
+
 	p = find_symbol(top_symtab_stack(), $1);
 	if(!p || p->type->type_id != TYPE_ARRAY){
 		parse_error("Undeclared array name",$1);
@@ -1046,20 +888,13 @@ expression oRB
 	t = array_factor_tree(p, $4);
 	t = address_tree(t, p);
 	push_ast_stack(t);
-#else
-	do_array_factor(p);
-#endif
 }
 oASSIGN expression
 {
-#ifdef GENERATE_AST
+
 	t = pop_ast_stack();
 	$$ = assign_tree(t, $8);
 	list_append(&ast_forest, $$);
-#else
-	p = pop_term_stack();
-	do_assign(p, $8);
-#endif
 }
 |yNAME oDOT yNAME
 {
@@ -1075,29 +910,15 @@ oASSIGN expression
 		return 0;
 	}
 
-#ifdef GENERATE_AST
 	t = field_tree(p, q);
 	t = address_tree(t, q);
 	push_ast_stack(t);
-#else
-	emit_load_address(p);
-	emit_push_op(TYPE_INTEGER);
-	do_record_factor(p,q);
-	push_term_stack(p);
-	push_term_stack(q);
-#endif
 }
 oASSIGN expression
 {
-#ifdef GENERATE_AST
 	t = pop_ast_stack();
 	$$ = assign_tree(t, $6);
 	list_append(&ast_forest, $$);
-#else
-	q = pop_term_stack();
-	p = pop_term_stack();
-	do_assign(q, $6);
-#endif
 }
 ;
 
@@ -1110,12 +931,9 @@ proc_stmt
 		return 0;
 	}
 
-#ifdef GENERATE_AST
 	$$ = call_tree(ptab, NULL);
 	list_append(&ast_forest, $$);
-#else
-	do_procedure_call(ptab);
-#endif
+
 }
 |yNAME
 {
@@ -1128,22 +946,15 @@ proc_stmt
 }
 oLP args_list oRP
 {
-#ifdef GENERATE_AST
 	$$ = call_tree(top_call_stack(), args);
 	list_append(&ast_forest, $$);
-#else
-	do_procedure_call(top_call_stack());
-#endif
+
 	pop_call_stack();
 }
 |SYS_PROC
 {
-#ifdef GENERATE_AST
 	$$ = sys_tree($1->attr, NULL);
 	list_append(&ast_forest, $$);
-#else
-	do_sys_routine($1->attr, 0);
-#endif
 }
 |SYS_PROC 
 {
@@ -1160,12 +971,8 @@ oLP args_list oRP
 }
 oLP expression_list oRP 
 {
-#ifdef GENERATE_AST
 	$$ = sys_tree($1->attr, $4);
 	list_append(&ast_forest, $$);
-#else
-	do_sys_routine($1->attr, $4);
-#endif
 	
 	pop_call_stack();
 }
@@ -1175,63 +982,50 @@ oLP expression_list oRP
 		parse_error("too few parameters in call to", "read");
 		return 0;
 	}
-#ifdef GENERATE_AST
+
 	if (generic($3->op) == LOAD)
 		t = address_tree(NULL, $3->u.generic.sym);
 	else
 		t = address_tree($3, $3->u.generic.sym);
 	$$ = sys_tree(pREAD, t);
 	list_append(&ast_forest, $$);
-#else
-	emit_load_address($3);
-	do_sys_routine(pREAD, $3->type->type_id);
-#endif
+
 }
 ;
 
 compound_stmt
 :kBEGIN
 {
-#ifdef GENERATE_AST
 	/* block begin. */
 	t = new_tree(BLOCKBEG, NULL, NULL, NULL);
 	list_append(&ast_forest, t);
-#endif
 }
 stmt_list
 kEND
 {
-#ifdef GENERATE_AST
 	/* block end. */
 	t = new_tree(BLOCKEND, NULL, NULL, NULL);
 	list_append(&ast_forest, t);
-#endif
 }
 ;
 
 if_stmt
 :kIF 
 {
-#ifdef GENERATE_AST
 	push_lbl_stack(if_label_count++);
-#endif
 }
 expression kTHEN
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "if_false_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	new_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 
 	t = cond_jump_tree($3, false, new_label);
 	list_append(&ast_forest, t);
-#else
-	do_if_test();
-#endif
+
 }
 stmt
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "if_false_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	new_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
@@ -1250,13 +1044,9 @@ stmt
 	/* append label tree. */
 	t = pop_ast_stack();
 	list_append(&ast_forest, t);
-#else
-	do_if_clause();
-#endif
 }
 else_clause
 {
-#ifdef GENERATE_AST
 	/* append exit label. */
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "if_exit_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
@@ -1266,9 +1056,6 @@ else_clause
 	list_append(&ast_forest, t);
 	pop_lbl_stack();
 
-#else
-	do_if_exit();
-#endif
 }
 |kIF error 
 {
@@ -1289,62 +1076,45 @@ else_clause
 repeat_stmt
 :kREPEAT
 {
-#ifdef GENERATE_AST
 	push_lbl_stack(repeat_label_count++);
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "repeat_%d", repeat_label_count - 1);
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	new_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 	t = label_tree(new_label);
 	list_append(&ast_forest, t);
-#else
-	do_repeat_start();
-#endif
+
 }
 stmt_list kUNTIL expression
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "repeat_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	new_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 	t = cond_jump_tree($5, false, new_label);
 	list_append(&ast_forest, t);
 	pop_lbl_stack();
-#else
-	do_repeat_exit();
-#endif
 }
 ;
 
 while_stmt
 :kWHILE
 {
-#ifdef GENERATE_AST
 	push_lbl_stack(while_label_count++);
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "while_test_%d", while_label_count - 1);
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	test_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 	t = label_tree(test_label);
 	list_append(&ast_forest, t);
-#else
-	do_while_start();
-#endif
 }
 expression kDO
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "while_exit_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	exit_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 	t = cond_jump_tree($3, false, exit_label);
 	list_append(&ast_forest, t);
-#else
-	do_while_expr();
-#endif
 }
 stmt
 {
-#ifdef GENERATE_AST
-
 	/* generate while_exit_%d label tree and push. */
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "while_exit_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
@@ -1363,9 +1133,6 @@ stmt
 	t = pop_ast_stack();
 	list_append(&ast_forest, t);
 	pop_lbl_stack();
-#else
-	do_while_exit();
-#endif
 }
 ;
 
@@ -1385,8 +1152,6 @@ for_stmt
 		parse_error("lvalue expected","");
 		return 0;
 	}
-#ifdef GENERATE_AST
-	
 	/* assign tree */
 	t = address_tree(NULL, p);
 	push_ast_stack(t);
@@ -1401,14 +1166,9 @@ for_stmt
 	t = label_tree(test_label);
 	list_append(&ast_forest, t);
 
-#else
-	do_for_start(p);
-#endif
 }
 direction expression kDO
 {
-#ifdef GENERATE_AST
-
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "for_exit_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	exit_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
@@ -1428,13 +1188,9 @@ direction expression kDO
 
 	t = cond_jump_tree(t, false, exit_label);
 	list_append(&ast_forest, t);
-#else
-	do_for_test($6);
-#endif
 }
 stmt
 {
-#ifdef GENERATE_AST
 	t = pop_ast_stack();
 
 	if ($6 == kTO)
@@ -1462,10 +1218,6 @@ stmt
 	t = label_tree(exit_label);
 	list_append(&ast_forest, t);
 	pop_lbl_stack();
-
-#else
-	do_for_exit();
-#endif
 }
 ;
 
@@ -1483,7 +1235,6 @@ direction
 case_stmt
 :kCASE 
 {
-#ifdef GENERATE_AST
 	push_lbl_stack(switch_label_count++);
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "switch_test_%d", switch_label_count - 1);
 	mini_buf[sizeof(mini_buf) - 1] = 0;
@@ -1497,18 +1248,10 @@ case_stmt
 	case_label_count = 0;
 	push_case_stack(case_label_count++);
 	/* list_clear(&case_list); */
-#endif
 }
-expression kOF
-{
-#ifdef GENERATE_AST
-#else
-	do_case_start();
-#endif
-}
+expression kOF {}
 case_expr_list
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "switch_test_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	test_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
@@ -1538,10 +1281,6 @@ case_expr_list
 	t = label_tree(exit_label);
 	list_append(&ast_forest, t);
 	pop_lbl_stack();
-
-#else
-	do_case_test();
-#endif
 }
 kEND
 ;
@@ -1554,8 +1293,6 @@ case_expr_list
 case_expr
 :const_value
 {
-#ifdef GENERATE_AST
-	
 	case_label_count = pop_case_stack();
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "case_%d_%d", top_lbl_stack(), case_label_count++);
 	mini_buf[sizeof(mini_buf) - 1] = 0;
@@ -1571,22 +1308,15 @@ case_expr
 
 	t = const_tree($1);
 	list_append(case_list, t);
-#else
-	add_case_const($1);
-#endif
 }
 oCOLON stmt
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "switch_exit_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	exit_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 
 	t = jump_tree(exit_label);
 	list_append(&ast_forest, t);
-#else
-	do_case_jump();
-#endif
 }
 oSEMI
 |yNAME
@@ -1603,7 +1333,7 @@ oSEMI
 			parse_error("Element name expected","");
 			return 0;
 	}
-#ifdef GENERATE_AST
+
 	case_label_count = top_case_stack();
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "case_%d_%d", top_lbl_stack(), case_label_count++);
 	mini_buf[sizeof(mini_buf) - 1] = 0;
@@ -1618,22 +1348,14 @@ oSEMI
 
 	t = id_factor_tree(NULL, p);
 	list_append(case_list, t);
-#else
-	emit_load_value(p);
-	add_case_const(p);
-#endif
 }
 oCOLON stmt
 {
-#ifdef GENERATE_AST
 	snprintf(mini_buf, sizeof(mini_buf) - 1, "switch_exit_%d", top_lbl_stack());
 	mini_buf[sizeof(mini_buf) - 1] = 0;
 	exit_label = new_symbol(mini_buf, DEF_LABEL, TYPE_VOID);
 	t = jump_tree(exit_label);
 	list_append(&ast_forest, t);
-#else
-	do_case_jump();
-#endif
 }
 oSEMI
 ;
@@ -1645,8 +1367,6 @@ goto_stmt
 expression_list
 :expression_list  oCOMMA  expression
 {
-#ifdef GENERATE_AST
-
 	rtn = top_call_stack();
 
 	/* next argument. */
@@ -1658,13 +1378,9 @@ expression_list
 	/* append to right tree of args. */
 	args = arg_tree(args, rtn, arg, $3);
 	$$ = args;
-
-#endif
 }
 |expression
 {
-#ifdef GENERATE_AST
-
 	args = NULL;
 
 	/* first argument. set rtn to symtab of current function call. */
@@ -1682,247 +1398,111 @@ expression_list
 
 	$$ = args;
 
-#endif
 }
 ;
 
 expression
-:expression
-{
-#ifdef GENERATE_AST
-#else
-    emit_push_op($1);
-#endif
-}
+:expression {}
 oGE expr
 {
-#ifdef GENERATE_AST
 	$$ = compare_expr_tree(GE, $1, $4);
-#else
-	do_expression($4, oGE);
-	$$ = TYPE_BOOLEAN;
-#endif
 }
-|expression
-{
-#ifdef GENERATE_AST
-#else
-   	emit_push_op($1);
-#endif
-}
+|expression {}
 oGT expr
 {
-#ifdef GENERATE_AST
 	$$ = compare_expr_tree(GT, $1, $4);
-#else
-	do_expression($4, oGT);
-	$$ = TYPE_BOOLEAN;
-#endif
 }
-|expression
-{
-#ifdef GENERATE_AST
-#else
-   emit_push_op($1);
-#endif
-}
+|expression {}
 oLE expr
 {
-#ifdef GENERATE_AST
 	$$ = compare_expr_tree(LE, $1, $4);
-#else
-
-	do_expression($4,oLE);
-	$$ = TYPE_BOOLEAN;
-#endif
 }
 |expression
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1);
-#endif
 }
 oLT expr
 {
-#ifdef GENERATE_AST
 	$$ = compare_expr_tree(LT, $1, $4);
-#else
-	do_expression($4,oLT);
-	$$ = TYPE_BOOLEAN;
-#endif
 }
 |expression
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1);
-#endif
 }
 oEQUAL expr
 {
-#ifdef GENERATE_AST
 	$$ = compare_expr_tree(EQ, $1, $4);
-#else
-	do_expression($4,oEQUAL);
-	$$ = TYPE_BOOLEAN;
-#endif
 }
 |expression
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1);
-#endif
 }
 oUNEQU  expr
 {
-#ifdef GENERATE_AST
 	$$ = compare_expr_tree(NE, $1, $4);
-#else
-	do_expression($4,oUNEQU);
-	$$ = TYPE_BOOLEAN;
-#endif
 }
 |expr
 {
-#ifdef GENERATE_AST
 	$$ = $1;
-#else
-	$$ = $1->type->type_id;
-#endif
 }
 ;
 
 expr:expr
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
 }
 oPLUS term
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(ADD, $1, $4);
-#else
-	do_expr($4,oPLUS);
-#endif
 }
 |expr
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
 }
 oMINUS  term
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(SUB, $1, $4);
-#else
-	do_expr($4 ,oMINUS);
-#endif
 }
 |expr
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
 }
 kOR term
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(OR, $1, $4);
-#else
-	do_expression($4,kOR);
-#endif
 }
 |term
 {
-#ifdef GENERATE_AST
 	$$ = $1;
-#endif
 }
 ;
 
 term    :term
 {
-#ifdef GENERATE_AST
-#else
-        emit_push_op($1->type->type_id);
-#endif
 }
 oMUL  factor
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(MUL, $1, $4);
-#else
-	do_term($4,oMUL);
-#endif
 }
 |  term
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
 }
 oDIV factor
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(DIV, $1, $4);
-#else
-	do_term($4,kDIV);
-#endif
 }
-|term
-{
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
-
-}
+|term {}
 kDIV factor
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(DIV, $1, $4);
-#else
-	do_term($4, kDIV);
-#endif
 }
 |term
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
-
 }
 kMOD factor
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(MOD, $1, $4);
-#else
-	do_term($4, kMOD);
-#endif
 }
 |term
 {
-#ifdef GENERATE_AST
-#else
-	emit_push_op($1->type->type_id);
-#endif
 }
 kAND factor
 {
-#ifdef GENERATE_AST
 	$$ = binary_expr_tree(AND, $1, $4);
-#else
-	do_term($4,kAND);
-#endif
 }
 |factor
 {
@@ -1950,7 +1530,7 @@ factor: yNAME
 		p = install_temporary_symbol($1, DEF_VAR, TYPE_INTEGER);
 		/* return  0; */
 	}
-#ifdef GENERATE_AST
+
 	if (p)
 	{
 		$$ = id_factor_tree(NULL, p);
@@ -1960,17 +1540,6 @@ factor: yNAME
 		/* call functions with no arguments. */
 		$$ = call_tree(ptab, NULL);
 	}
-#else
-	if(p)
-	{
-		$$ = p;
-		do_factor(p);
-	}
-	else 
-	{
-		$$ = do_function_call(ptab);
-	}
-#endif
 }
 |yNAME
 {
@@ -1984,22 +1553,15 @@ factor: yNAME
 }
 oLP args_list oRP
 {
-#ifdef GENERATE_AST
 	$$ = call_tree(ptab, args);
-#else
-	$$ = do_function_call(top_call_stack());
-#endif
+
 	pop_call_stack();
 }
 |SYS_FUNCT
 {
 	ptab = find_sys_routine($1->attr);
-#ifdef GENERATE_AST
+
 	$$ = sys_tree($1->attr, NULL);
-#else
-	do_sys_routine(ptab->id, ptab->type->type_id);
-	$$ = ptab->locals;
-#endif
 }
 |SYS_FUNCT
 {
@@ -2009,14 +1571,8 @@ oLP args_list oRP
 oLP args_list oRP
 {
 	ptab = top_call_stack();
-#ifdef GENERATE_AST
+
 	$$ = sys_tree($1->attr, args);
-#else
-	ptab = top_call_stack();
-	do_sys_routine(-ptab->id, ptab->type->type_id);
-	ptab = pop_call_stack();
-	$$ = ptab->locals;
-#endif
 }
 |const_value
 {
@@ -2040,38 +1596,20 @@ oLP args_list oRP
 		default:
 			break;
 	}
-#ifdef GENERATE_AST
+
 	$$ = const_tree($1);
-#else
-	do_factor($1);
-#endif
 }
 |oLP expression oRP
 {
-#ifdef GENERATE_AST
 	$$ = $2;
-#else
-	$$ = find_symbol(NULL, "");
-	$$->type = find_type_by_id($2);
-#endif
 }
 |kNOT factor
 {
-#ifdef GENERATE_AST
 	$$ = not_tree($2);
-#else
-	do_not_factor($2);
-	$$ = $2;
-#endif
 }
 |oMINUS factor
 {
-#ifdef GENERATE_AST
 	$$ = neg_tree($2);
-#else
-	do_negate($2);
-	$$ = $2;
-#endif
 }
 |yNAME  oLB
 {
@@ -2084,25 +1622,12 @@ oLP args_list oRP
 	}
 
 	push_term_stack(p);
-
-#ifdef GENERATE_AST
-#else
-	emit_load_address(p);
-  	emit_push_op(TYPE_INTEGER);
-#endif
 }
 expression oRB
 {
-#ifdef GENERATE_AST
 	p = pop_term_stack(p);
 	t = array_factor_tree(p, $4);
 	$$ = id_factor_tree(t, p);
-#else
-	p = pop_term_stack(p);
-	do_array_factor(p);
-	emit_load_value(p);
-	$$ = p->type_link->last;
-#endif
 }
 |yNAME oDOT yNAME
 {
@@ -2117,24 +1642,14 @@ expression oRB
 		return 0;
 	}
 	
-#ifdef GENERATE_AST
 	t = field_tree(p, q);
 	$$ = id_factor_tree(t, q);
-#else
-	emit_load_address(p);
-	emit_push_op(TYPE_INTEGER);
-	do_record_factor(p,q);
-	emit_load_field(q);
-	$$ = q;
-#endif
 }
 ;
 
 args_list
 :args_list  oCOMMA  expression 
 {
-#ifdef GENERATE_AST
-
 	rtn = top_call_stack();
 
 	/* next argument. */
@@ -2145,14 +1660,10 @@ args_list
 
 	/* append to right tree of args. */
 	args = arg_tree(args, rtn, arg, $3);
-#else
-	do_args($3);
-#endif
+
 }
 |expression 
 {
-#ifdef GENERATE_AST
-
 	args = NULL;
 
 	/* first argument. set rtn to symtab of current function call. */
@@ -2170,10 +1681,6 @@ args_list
 	{
 		args = arg_tree(args, rtn, arg, $1);
 	}
-
-#else
-	do_first_arg($1);
-#endif
 }
 ;
 
@@ -2214,19 +1721,17 @@ symbol* top_term_stack()
 
 int parser_init()
 {
-#ifdef GENERATE_AST
 	memset(&ast_forest, 0, sizeof(ast_forest));
 	memset(&para_list, 0, sizeof(para_list));
 	memset(&case_list, 0, sizeof(case_list));
-	if_label_count = repeat_label_count = 
-		do_label_count = while_label_count = 
-			case_label_count = switch_label_count = 
-				for_label_count = 0;
-#endif
+	if_label_count = 0;	repeat_label_count = 0;
+	do_label_count = 0;	while_label_count = 0;
+	case_label_count = 0;	switch_label_count =0; 
+	for_label_count = 0;
+
 	return 0;
 }
 
-#ifdef GENERATE_AST
 Tree ast_stk[MAX_TERM];
 int ast_stk_tos = MAX_TERM - 1;
 
@@ -2354,7 +1859,6 @@ List top_case_ast_stack()
 	else
 		return case_ast_stk[case_ast_stk_tos + 1];
 }
-#endif
 
 /* add a temporary symbol when encounted a not defined symbol */
 Symbol install_temporary_symbol(char *name, int deftype, int typeid)
@@ -2364,6 +1868,3 @@ Symbol install_temporary_symbol(char *name, int deftype, int typeid)
 	return p;
 }
 
-void trap_in_debug(){
-	printf("trap_in_debug()\n");
-}

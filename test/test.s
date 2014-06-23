@@ -1,4 +1,4 @@
-.file "test.s"
+.file "test/test.s"
 
 sys_call_id = 0x80
 exit_syscall = 0x1
@@ -292,7 +292,7 @@ cz_001:
 		.long .LCcz_001
 
 
-#---program ex7_1 ---
+#---program test ---
 
 # routine : testfunc 
 		.text
@@ -1250,7 +1250,7 @@ for_exit_6:
 		movb	va_014, %al
 		pushl	%eax
 		pushl	%ebp
-		call	_write_char
+		call	_writeln_char
 		addl	$8, %esp
 		leave
 		ret

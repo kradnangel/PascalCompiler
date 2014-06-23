@@ -1,7 +1,6 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
-#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -11,20 +10,14 @@
 #define KEYWORD		-1
 
 #define FILE_NAME_LEN	(64)
+#define	_YTAB_H_	"rule.h"
 
-#if 0
-#if defined (_MSDOS_)
-	#define _YTAB_H_		"ytab.h"
-#else
-	#define _YTAB_H_		"y.tab.h"
-#endif
-#else
-	#define		_YTAB_H_		"rule.h"
-#endif
+#define DAG_DEBUG		(2)
+#define CONST_FOLDING_DEBUG	(4)
+#define COMMON_EXPR_DEBUG	(8)
+#define SYSTEM_CALL_DEBUG	(16)
+#define DEBUG			(0)
 
-#ifdef WIN32
-#define YY_NO_UNISTD_H
-#endif
 
 #define MAX_LINE_LENGTH		(20480)
 
@@ -34,10 +27,10 @@
 #define LAST_ENTRY			(65536 * 1024)
 #define NAME_LEN			(32)
 #define SIZE_CHAR			(1)
-#define SIZE_INTEGER		(4)
+#define SIZE_INTEGER			(4)
 #define SIZE_REAL			(4)
-#define SIZE_BOOLEAN		SIZE_INTEGER
-#define SIZE_POINTER		(4)
+#define SIZE_BOOLEAN			SIZE_INTEGER
+#define SIZE_POINTER			(4)
 #define S_STACK				SIZE_INTEGER
 #define DEF_UNKNOWN			(0)
 #define DEF_CONST			(1)
@@ -53,11 +46,11 @@
 #define DEF_ELEMENT			(11)
 #define DEF_LABEL			(12)
 
-typedef int					boolean;
+typedef int	boolean;
 
 #define false 				0
 #define true 				1
-#define new_index(m)		++m##_index
+#define new_index(m)			++m##_index
 #define size(x)				SIZE_##x
 
 extern	FILE 	*codfp;
@@ -175,9 +168,6 @@ extern Env main_env;
 /* nodes and dags. */
 #include "dag.h"
 
-/* target interface */
-#include "config.h"
-
 typedef struct metrics
 {
     unsigned char size, align, outofline;
@@ -201,17 +191,6 @@ typedef struct interface
         Metrics doublemetric;
         Metrics pointermetric;
         Metrics structmetric;
-
-#if 0
-        /* flag interface. */
-		unsigned endian: 1;					/* little or big endian flag,  set to 1 when little endian, or 0 */
-		unsigned risc_instructon_set:1;		/* risc or cisc, set 1 for RISC. */
-		unsigned struct_prarmeter: 1;		/* if target supports structure as parameter, set it to 1. */
-		unsigned struct_return_value: 1;	/* if target supports structure as return value, set it to 1. */
-		unsigned std_call: 1;				/* stdcall flag, 1 from left to right. */
-		unsigned dag_mode: 2;				/* 0 for not generate dag */
-		unsigned reserved: 1;				/* reserved. set to 0 */
-#endif
 
         /* function interface. */
         int (*program_begin)(Env *);

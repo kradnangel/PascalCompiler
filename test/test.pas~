@@ -204,7 +204,7 @@ program test;
 		achar := achar + 1;
 
 		write('achar =');
-		writeln(achar);
+		write(achar);
 
 end.
 

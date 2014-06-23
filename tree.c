@@ -1,7 +1,5 @@
 #include "common.h"
 
-/* alloc memory from tree arena. */
-static int where = TREE;
 static int print_level = 0;
 
 /* new tree or node */
@@ -10,7 +8,7 @@ Tree new_tree(int op, Type type, Tree left, Tree right)
 
     Tree p;
 
-    NEW0(p, where);
+    NEW0(p, TREE);
     p->op = op;
     p->result_type = type;
     p->kids[0] = left;

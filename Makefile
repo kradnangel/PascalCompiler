@@ -1,34 +1,13 @@
-# Makefile for lpc compiler.
-#
-FLEX=flex
-FLEXFLAGS=
-BISONFLAGS=-d
-BISON=bison
-COMPILER_DIST=splc
-CC=gcc
-CFLAGS=-g -Wall
-LDFLAGS=-g -Wall
-CVS=cvs
+NAME = mypas
+DOTH=common.h symtab.h x86.h tree.h dag.h
 
-COMPILER_HEADER=common.h \
-				config.h \
-				symtab.h \
-				x86.h \
-				tree.h \
-				dag.h \
-				config.h
-
-COMPILER_SOURCE= common.h \
+SOURCE= common.h \
 				error.c \
-				h.l \
-				h.y \
-				config.h \
 				main.c \
 				symtab.c \
 				symtab.h \
 				type.c \
 				x86.c \
-				x86dos.c \
 				x86.h \
 				x86rtl.asm \
 				rule.c \
@@ -43,9 +22,8 @@ COMPILER_SOURCE= common.h \
 				x86linux.c \
 				opti.c
 
-COMPILER_OBJS=error.o \
+OBJS=error.o \
 			  lex.yy.o \
-			  x86dos.o \
 			  main.o \
 			  symtab.o \
 			  type.o \
@@ -59,36 +37,32 @@ COMPILER_OBJS=error.o \
 			  x86linux.o \
 			  opti.o
 
-COMPILER_AUTOFILES=y.tab.c \
-				   lex.yy.c \
-				   rule.c \
-				   h.tab.h \
-				   rule.h
+MAKED = lex.yy.c rule.c rule.h
 
 .SUFFIXES:.c
 
-all: $(COMPILER_DIST)
+all: $(NAME)
 
 dag.o: dag.c common.h
-	$(CC) $(CFLAGS) -c $<
+	gcc -g -Wall -c $<
 
 alloc.o: alloc.c common.h
-	$(CC) $(CFLAGS) -c $<
+	gcc -g -Wall -c $<
 
-%.o:%.c $(COMPILER_HEADER)
-	$(CC) $(CFLAGS) -c $<
+%.o:%.c $(DOTH)
+	gcc -g -Wall -c $<
 
 lex.yy.c:spl.l rule.c
-	$(FLEX) $(FLEXFLAGS) spl.l
+	flex spl.l
 
 rule.c:spl.y
-	$(BISON) $(BISONFLAGS) -o rule.c $<
+	bison -d -o rule.c $<
 
-$(COMPILER_DIST):$(COMPILER_OBJS) $(COMPILER_HEADER)
-	gcc -o $(COMPILER_DIST) $(LDFLAGS) $(COMPILER_OBJS)
+$(NAME):$(OBJS) $(DOTH)
+	gcc -o $(NAME) -g -Wall $(OBJS)
 
 clean:
 	rm -f *.o
-	rm -f $(COMPILER_DIST)
-	rm -f $(COMPILER_AUTOFILES)
+	rm -f $(NAME)
+	rm -f $(MAKED)
 

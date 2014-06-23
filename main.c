@@ -2,15 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
-#ifdef _MSDOS_
-#include <io.h>
-#endif
-
-#ifdef __linux__
-#include <unistd.h>
-#endif
-
 #include "common.h"
 
 FILE *codfp, *datfp, *errfp;
@@ -30,15 +21,12 @@ static char buffer[128];
 void init(char *);
 void emit_asm();
 void clear();
-void signup();
 
 int yyparse();
 
-int dump_source = 0;
 int dump_ast = 0;
 int dump_dag = 0;
 int dump_asm = 0;
-int dump_token = 0;
 
 void print_result(char *);
 
@@ -48,17 +36,9 @@ extern union header *arena[LASTARENA];
 
 Interface *IR = &x86_linux_interface;
 
-void init_spl()
-{
-	memset(arena, 0, sizeof(arena));
-	signup();
-}
-
 void prepare_file(char *fname)
 {
     char *p;
-
-    get_keytable_size();
 
     for (p = fname; *p; p++)
         *p = tolower(*p);
@@ -75,13 +55,7 @@ void prepare_file(char *fname)
     }
 
     snprintf(pasname, sizeof(pasname), "%s.pas", fname);
-
-#ifdef GENERATE_AST
-    	snprintf(datname, sizeof(datname), "%s.s", fname);
-#else
-   	snprintf(datname, sizeof(datname), "%s.asm", fname);
-#endif
-
+    snprintf(datname, sizeof(datname), "%s.s", fname);
     snprintf(codname, sizeof(codname), "%s.cod", fname);
     snprintf(errname, sizeof(errname), "%s.err", fname);
 
@@ -125,14 +99,14 @@ int main(int argc, char **argv)
     int dargc;
     char **arg, **dargv;
 
-
     if (argc == 1)
     {
         printf("\nUsage :%s [-d stad] filename[.pas]\n\n", argv[0]);
         return 1;
     }
 
-	init_spl();
+    memset(arena, 0, sizeof(arena));
+    printf("\nCompiling...\n");
 
     arg = argv + 1;
     dargc = 0;
@@ -153,14 +127,8 @@ int main(int argc, char **argv)
                     {
                         switch(*p++)
                         {
-                        case 's':
-                            dump_source = 1;
-                            break;
                         case 'a':
                             dump_ast = 1;
-                            break;
-                        case 't':
-                            dump_token = 1;
                             break;
                         case 'd':
                             dump_dag = 1;
@@ -190,9 +158,7 @@ int main(int argc, char **argv)
     global_env.u.program.argc = dargc;
     global_env.u.program.argv = dargv;
 
-#ifndef GENERATE_AST
-	IR = &x86_dos_interface;
-#endif
+    /*IR = &x86_dos_interface;*/
 
     yyparse();
     fclose(ifp);
@@ -244,9 +210,4 @@ void clear()
     unlink(datname);
 }
 
-void signup()
-{
-    printf("\n");
-    printf("Compiling...");
-}
 
