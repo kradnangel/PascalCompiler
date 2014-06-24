@@ -54,65 +54,56 @@ typedef struct _tree
             Value val;
             Symbol sym;
             Symtab symtab;
-        }
-        generic;
+        } generic;
 
         /* for arg nodes. */
         struct
         {
             Symbol sym;
             Symtab symtab;
-        }
-        arg;
+        } arg;
 
         /* for field operation node. */
         struct
         {
             Symbol record;
             Symbol field;
-        }
-        field;
+        } field;
 
         /* for function/routine call */
         struct
         {
             Symtab symtab;				/* routine/function symtab */
-        }
-        call;
+        } call;
 
         /* for function/routine header. */
         struct
         {
             List para;					/* parameter list. */
             Symtab symtab;				/* symtab of the function/routine */
-        }
-        header;
+        } header;
 
         /* for system function/routine. */
         struct
         {
             int sys_id;					/* call id. */
-        }
-        sys;
+        } sys;
 
         /* for conditional jump. */
         struct
         {
             Symbol label;
             int true_or_false;
-        }
-        cond_jump;
+        } cond_jump;
 
         /* for label. */
         struct
         {
             Symbol label;
-        }
-        label;
+        } label;
 
     } u;
-}
-tree;
+} tree;
 
 typedef tree * Tree;
 
@@ -133,7 +124,7 @@ Tree compare_expr_tree(int op, Tree left, Tree right);
 Tree assign_tree(Tree id, Tree expr);
 Tree label_tree(Symbol label);
 Tree jump_tree(Symbol label);
-Tree cond_jump_tree(Tree cond, int trueorfalse, Symbol label);
+Tree cond_jump_tree(Tree cond, int boolean, Symbol label);
 Tree one_op_tree(Tree source, int op);
 void print_forest(List forest);
 

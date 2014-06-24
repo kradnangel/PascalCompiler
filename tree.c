@@ -3,9 +3,7 @@
 static int print_level = 0;
 
 /* new tree or node */
-Tree new_tree(int op, Type type, Tree left, Tree right)
-{
-
+Tree new_tree(int op, Type type, Tree left, Tree right) {
     Tree p;
 
     NEW0(p, TREE);
@@ -17,18 +15,14 @@ Tree new_tree(int op, Type type, Tree left, Tree right)
 }
 
 /* get value of an item of array. */
-Tree array_factor_tree(Symbol array, Tree expr)
-{
-    Tree t;
-
-    t = new_tree(ARRAY, array->type->last->type, expr, NULL);
+Tree array_factor_tree(Symbol array, Tree expr) {
+    Tree t = new_tree(ARRAY, array->type->last->type, expr, NULL);
     t->u.generic.sym = array;
     return t;
 }
 
 /* get value of id tree. */
-Tree id_factor_tree(Tree source, Symbol sym)
-{
+Tree id_factor_tree(Tree source, Symbol sym) {
     Tree t;
 
     if (source)
@@ -40,11 +34,8 @@ Tree id_factor_tree(Tree source, Symbol sym)
 }
 
 /* get value of a field of record. */
-Tree field_tree(Symbol record, Symbol field)
-{
-    Tree t;
-
-    t = new_tree(FIELD, field->type, NULL, NULL);
+Tree field_tree(Symbol record, Symbol field) {
+    Tree t = new_tree(FIELD, field->type, NULL, NULL);
     t->u.field.record = record;
     t->u.field.field = field;
     return t;
@@ -52,29 +43,21 @@ Tree field_tree(Symbol record, Symbol field)
 }
 
 /*  const value */
-Tree const_tree(Symbol constval)
-{
-    Tree t;
-
-    t = new_tree(CNST, constval->type, NULL, NULL);
+Tree const_tree(Symbol constval) {
+    Tree t = new_tree(CNST, constval->type, NULL, NULL);
     t->u.generic.sym = constval;
     return t;
 }
 
 /* new header tree. */
-Tree header_tree(symtab *ptab)
-{
-    Tree t;
-
-    t = new_tree(HEADER, ptab->type, NULL, NULL);
+Tree header_tree(symtab *ptab) {
+    Tree t = new_tree(HEADER, ptab->type, NULL, NULL);
     t->u.generic.symtab = ptab;
     return t;
 }
 
 /* type conversion tree. */
-Tree conversion_tree(Symbol source, Type target)
-{
-    Tree t;
+Tree conversion_tree(Symbol source, Type target) {
     int op = CVB;
     switch (target->type_id) {
     	case TYPE_INTEGER:
@@ -86,14 +69,13 @@ Tree conversion_tree(Symbol source, Type target)
     	case TYPE_BOOLEAN:
     	    op = CVB;        break;
     }
-    t = new_tree(op, target, NULL, NULL);
+    Tree t = new_tree(op, target, NULL, NULL);
     t->u.generic.sym = source;
     return t;
 }
 
 /* get address tree */
-Tree address_tree(Tree source, Symbol sym)
-{
+Tree address_tree(Tree source, Symbol sym) {
     Tree t;
 
     if (source)
@@ -107,8 +89,7 @@ Tree address_tree(Tree source, Symbol sym)
 /* Right tree.
  * holding arguments, comma operations.
  */
-Tree right_tree(Tree *root, Tree newrightpart)
-{
+Tree right_tree(Tree *root, Tree newrightpart) {
     Tree right;
 
     if (*root == NULL)
@@ -132,8 +113,7 @@ Tree right_tree(Tree *root, Tree newrightpart)
 /* arguments tree.
  * set argtree to NULL when first called.
  */
-Tree arg_tree(Tree argtree, Symtab function, Symbol arg, Tree expr)
-{
+Tree arg_tree(Tree argtree, Symtab function, Symbol arg, Tree expr) {
     Tree t, right;
 
     if (arg != NULL && arg->type->type_id != expr->result_type->type_id)
@@ -163,18 +143,14 @@ Tree arg_tree(Tree argtree, Symtab function, Symbol arg, Tree expr)
 
 
 /*  function call */
-Tree call_tree(Symtab routine, Tree argstree)
-{
-    Tree t;
-
-    t = new_tree(CALL, routine->type, argstree, NULL);
+Tree call_tree(Symtab routine, Tree argstree) {
+    Tree t = new_tree(CALL, routine->type, argstree, NULL);
     t->u.call.symtab = routine;
     return t;
 }
 
 /*  system call */
-Tree sys_tree(int sys_id, Tree argstree)
-{
+Tree sys_tree(int sys_id, Tree argstree) {
     Tree t;
     Symtab ptab;
 
@@ -189,76 +165,51 @@ Tree sys_tree(int sys_id, Tree argstree)
 }
  
 /* binary operation. */
-Tree binary_expr_tree(int op, Tree left, Tree right)
-{
-    Tree t;
-
-    t = new_tree(op, left->result_type, left, right);
+Tree binary_expr_tree(int op, Tree left, Tree right) {
+    Tree t = new_tree(op, left->result_type, left, right);
     t->result_type = left->result_type;
     return t;
 }
 
 /* comparision operation. */
-Tree compare_expr_tree(int op, Tree left, Tree right)
-{
-    Tree t;
-
-    t = new_tree(op, find_type_by_id(TYPE_BOOLEAN), left, right);
+Tree compare_expr_tree(int op, Tree left, Tree right) {
+    Tree t = new_tree(op, find_type_by_id(TYPE_BOOLEAN), left, right);
     return t;
 }
 
 /* assignment tree. */
-Tree assign_tree(Tree id, Tree expr)
-{
-    Tree t;
-
-    t = new_tree(ASGN, id->result_type, id, expr);
+Tree assign_tree(Tree id, Tree expr) {
+    Tree t = new_tree(ASGN, id->result_type, id, expr);
     return t;
 }
 
 /* label tree.*/
  
-Tree label_tree(Symbol label)
-{
-    Tree t;
-
-    t = new_tree(LABEL, label->type, NULL, NULL);
+Tree label_tree(Symbol label) {
+    Tree t = new_tree(LABEL, label->type, NULL, NULL);
     t->u.label.label = label;
     return t;
 }
 
-/* 
- * jump without condition.
- */
-Tree jump_tree(Symbol label)
-{
-    Tree t;
-
-    t = new_tree(JUMP, label->type, NULL, NULL);
+/* jump without condition.*/
+Tree jump_tree(Symbol label) {
+    Tree t = new_tree(JUMP, label->type, NULL, NULL);
     t->u.generic.sym = label;
     return t;
 }
 
-/* 
- * conditional condition.
- */
-Tree cond_jump_tree(Tree cond, int trueorfalse, Symbol label)
+/* conditional condition.*/
+Tree cond_jump_tree(Tree cond, int boolean, Symbol label)
 {
-    Tree t;
-
-    t = new_tree(COND, label->type, cond, NULL);
+    Tree t = new_tree(COND, label->type, cond, NULL);
     t->u.cond_jump.label = label;
-    t->u.cond_jump.true_or_false = trueorfalse;
+    t->u.cond_jump.true_or_false = boolean;
     return t;
 }
 
-
 /* +1 / -1 / not / negtive */
-Tree one_op_tree(Tree source, int op)
-{
-    Tree t;
-
-    t = new_tree(op, source->result_type, source, NULL);
+Tree one_op_tree(Tree source, int op) {
+    Tree t = new_tree(op, source->result_type, source, NULL);
     return t;
 }
 
@@ -271,10 +222,8 @@ static void print_tree(Tree tp)
 
     printf("+");
     for (i = 0; i < print_level; i++)
-    {
-        printf("-");
-    }
-
+       printf("-");
+    
     switch(generic(tp->op))
     {
     case LOAD:

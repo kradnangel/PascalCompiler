@@ -64,11 +64,11 @@ static void print_pos(FILE *fp)
 void parse_error(char *info, char *name)
 {
 
-    fprintf(errfp, "\nError at line %d:\n", line_no);
+    fprintf(errfp, "\n(Yacc)Error at line %d:\n", line_no);
     fprintf(errfp, "%s\n", line_buf);
     print_pos(errfp);
 
-    fprintf(stderr, "\nError at line %d:\n", line_no);
+    fprintf(stderr, "\n(Yacc)Error at line %d:\n", line_no);
     fprintf(stderr, "%s\n", line_buf);
     print_pos(stderr);
 
@@ -100,17 +100,17 @@ void parse_error(char *info, char *name)
 void lex_error(char *info)
 {
 
-    fprintf(errfp, "\nError at line %d:\n", line_no);
+    fprintf(errfp, "\n(lex)Error at line %d: \n", line_no);
     fprintf(errfp, "%s\n", line_buf);
     print_pos(errfp);
 
-    fprintf(stderr, "\nError at line %d:\n", line_no);
+    fprintf(stderr, "\n(lex)Error at line %d: \n", line_no);
     fprintf(stderr, "%s\n", line_buf);
     print_pos(stderr);
 
     snprintf(ebuf[error_count++], sizeof(ebuf[error_count++]) - 1, ": %s", info);
-    fprintf(errfp, "\nError (%d) : %s", line_no, info);
-    fprintf(stderr, "\nError (%d) : %s", line_no, info);
+    fprintf(errfp, "\n(lex)Error (%d) : %s", line_no, info);
+    fprintf(stderr, "\n(lex)Error (%d) : %s", line_no, info);
 }
 
 void yyerror(char *info)

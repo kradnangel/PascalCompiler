@@ -1,0 +1,19 @@
+
+(Yacc)Error at line 1:
+(null)
+^ : syntax error, unexpected oLP, expecting oSEMI 
+
+(Yacc)Error at line 4:
+(null)
+^ : syntax error, unexpected yNAME, expecting oCOMMA or oCOLON or oRP 
+
+(Yacc)Error at line 7:
+(null)
+^ : Undeclard identificr abc
+(Yacc)Error at line 7:
+(null)
+^ : syntax error, unexpected oSEMI, expecting oGE 
+
+(Yacc)Error at line 11:
+(null)
+^ : syntax error, unexpected kELSE 
