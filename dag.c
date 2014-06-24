@@ -25,12 +25,6 @@ static void kill_nodes(Symbol);
 static void reset(void);
 static Node node(int, Node, Node, Symbol);
 
-static int print_level = 0;
-
-#ifdef DEBUG
-static int travel_level = 0;
-#endif
-
 extern int dump_ast;
 extern int dump_dag;
 extern int dump_asm;
@@ -49,13 +43,6 @@ static struct dag *dag_node(int op, Node l, Node r, Symbol sym)
     if ((p->node.kids[1] = r) != NULL)
         ++r->count;
     p->node.syms[0] = sym;
-#if DEBUG & COMMON_EXPR_DEBUG
-
-    if (sym)
-        printf("node %s (%s) created.\n", get_op_name(generic(op)), sym->name);
-    else
-        printf("node %s created.\n", get_op_name(generic(op)));
-#endif
 
     return p;
 }
@@ -66,20 +53,11 @@ static Node node(int op, Node l, Node r, Symbol sym)
     struct dag *p;
 
     i = available_node_hash(op, l, r, sym);
-    /* (opindex(op)^((unsigned long)sym>>2))&(NELEMS(buckets)-1); */
     for (p = buckets[i]; p; p = p->hlink)
         if (p->node.op == op && p->node.syms[0] == sym
                 &&  p->node.kids[0] == l  && p->node.kids[1] == r)
         {
             p->node.count ++;
-            /* match. */
-#if DEBUG & CONST_FOLDING_DEBUG
-
-            printf("common expr found %s (%s).\n",
-                   get_op_name(generic(p->node.op)),
-                   p->node.syms[0]->name);
-#endif
-
             return &p->node;
         }
     p = dag_node(op, l, r, sym);
@@ -103,18 +81,9 @@ static void kill_nodes(Symbol p)
     {
         for (q = &buckets[i]; *q; )
         {
-            /*
-            if (generic((*q)->node.op) == LOAD &&
-            	(!isaddrop((*q)->node.kids[0]->op)
-            	 || (*q)->node.kids[0]->syms[0] == p)) 
-            */
             if (generic((*q)->node.op) == LOAD &&
                     ((*q)->node.syms[0] == p))
             {
-#if DEBUG & COMMON_EXPR_DEBUG
-                printf("node %s killed.\n", p->name);
-#endif
-
                 *q = (*q)->hlink;
                 --nodecount;
             }
@@ -146,8 +115,6 @@ Node travel(Tree tp)
 
     if (tp->dag_node)
         return tp->dag_node;
-
-    travel_level++;
 
     op = tp->op;
     switch (generic(tp->op))
@@ -334,13 +301,6 @@ Node travel(Tree tp)
         assert(0);
     }
 
-
-    travel_level--;
-#if DEBUG & DAG_DEBUG
-
-    p->op_name = get_op_name(p->op);
-#endif
-
     p->type = tp->result_type;
     tp->dag_node = p;
     return p;
@@ -404,9 +364,6 @@ int emit_code(List dags)
     int should_stop = 0;
     List cp;
 
-    if (dump_dag)
-        print_dags(dags);
-
     /* chance for back end to select instructions and regisgers. */
     cp = dags->link;
     for (; cp; cp = cp->link)
@@ -420,49 +377,3 @@ int emit_code(List dags)
 
     return should_stop;
 }
-
-static void print_node(Node n)
-{
-    int i;
-
-    if (n == NULL)
-        return;
-
-    printf("+");
-    for (i = 0; i < print_level; i++)
-    {
-        printf("-");
-    }
-
-    if (generic(n->op) == CNST)
-        printf("%s(%d)\n", get_op_name(generic(n->op)), n->syms[0]->v.i);
-    else
-        printf("%s\n", get_op_name(generic(n->op)));
-
-    print_level++;
-
-    if (n->kids[0])
-        print_node(n->kids[0]);
-
-    if (n->kids[1])
-        print_node(n->kids[1]);
-
-    print_level--;
-}
-
-
-void print_dags(List dags)
-{
-    List cp;
-
-    printf("\n--------------dags---------------------------\n");
-
-    cp = dags->link;
-    for (; cp; cp = cp->link)
-    {
-        printf("\n\n");
-        print_level = 0;
-        print_node((Node)cp->x);
-    }
-}
-

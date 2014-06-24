@@ -10,10 +10,7 @@
 #include "common.h"
 #include "symtab.h"
 
-
 enum { CONSTANTS=1, LABELS, GLOBAL, PARAM, LOCAL };
-
-struct _node;
 
 struct _node
 {
@@ -43,7 +40,6 @@ struct _node
 
 typedef struct _node * Node;
 
-struct _tree;
 typedef struct _tree
 {
     int op;

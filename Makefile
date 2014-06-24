@@ -18,7 +18,6 @@ SOURCE= common.h \
 				list.c \
 				dag.h \
 				dag.c \
-				ops.c \
 				x86linux.c \
 				opti.c
 
@@ -32,7 +31,6 @@ OBJS=error.o \
 			  alloc.o \
 			  list.o \
 			  dag.o \
-			  ops.o \
 			  x86.o \
 			  x86linux.o \
 			  opti.o

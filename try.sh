@@ -1,4 +1,4 @@
-./mypas test/test
+./mypas test/$1
 cd test
-./make.sh test
-./test
+./make.sh $1
+./$1

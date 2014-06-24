@@ -187,10 +187,8 @@ Tree sys_tree(int sys_id, Tree argstree)
     t->u.sys.sys_id = sys_id;
     return t;
 }
-
-/* 
- * binary operation.
- */
+ 
+/* binary operation. */
 Tree binary_expr_tree(int op, Tree left, Tree right)
 {
     Tree t;
@@ -200,9 +198,7 @@ Tree binary_expr_tree(int op, Tree left, Tree right)
     return t;
 }
 
-/* 
- * comparision operation.
- */
+/* comparision operation. */
 Tree compare_expr_tree(int op, Tree left, Tree right)
 {
     Tree t;
@@ -211,9 +207,7 @@ Tree compare_expr_tree(int op, Tree left, Tree right)
     return t;
 }
 
-/* 
- * assignment tree.
- */
+/* assignment tree. */
 Tree assign_tree(Tree id, Tree expr)
 {
     Tree t;
@@ -222,9 +216,8 @@ Tree assign_tree(Tree id, Tree expr)
     return t;
 }
 
-/* 
- * label tree.
- */
+/* label tree.*/
+ 
 Tree label_tree(Symbol label)
 {
     Tree t;
@@ -285,7 +278,7 @@ static void print_tree(Tree tp)
     switch(generic(tp->op))
     {
     case LOAD:
-        printf("%s (%s)\n", get_op_name(generic(tp->op)), tp->u.generic.sym->name);
+        printf("%d (%s)\n", generic(tp->op), tp->u.generic.sym->name);
         break;
     case LABEL:
         printf("LABEL (%s)\n", tp->u.label.label->name);
@@ -294,7 +287,7 @@ static void print_tree(Tree tp)
         printf("JUMP (%s)\n", tp->u.generic.sym->name);
         break;
     default:
-        printf("%s\n", get_op_name(generic(tp->op)));
+        printf("%d\n", generic(tp->op));
         break;
     }
 
