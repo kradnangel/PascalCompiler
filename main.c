@@ -24,7 +24,7 @@ void clear();
 
 int yyparse();
 
-int dump_ast = 0;
+int dump_ast = 1;
 int dump_dag = 0;
 int dump_asm = 0;
 

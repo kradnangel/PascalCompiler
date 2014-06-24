@@ -260,7 +260,7 @@ Tree cond_jump_tree(Tree cond, int trueorfalse, Symbol label)
 }
 
 
-/* +1 / -1 / not / negtive */
+/* +1 or -1 used for 'for' */
 Tree one_op_tree(Tree source, int op)
 {
     Tree t;

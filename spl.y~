@@ -1605,11 +1605,11 @@ oLP args_list oRP
 }
 |kNOT factor
 {
-	$$ = one_op_tree($2, NOT);
+	$$ = not_tree($2);
 }
 |oMINUS factor
 {
-	$$ = one_op_tree($2, NEG);
+	$$ = neg_tree($2);
 }
 |yNAME  oLB
 {
