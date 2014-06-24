@@ -9,6 +9,8 @@ FILE *ifp;
 extern FILE *yyin;
 
 extern int line_no;
+extern int line_pos;
+
 
 char pasname[FILE_NAME_LEN];
 char datname[FILE_NAME_LEN];
@@ -67,6 +69,7 @@ void prepare_file(char *fname)
     yyin = ifp;
 
     line_no = 1;
+    line_pos = 0;
 
     codfp = fopen(codname, "wt");
     datfp = fopen(datname, "wt");

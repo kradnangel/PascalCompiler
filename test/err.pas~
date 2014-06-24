@@ -12,3 +12,4 @@ begin
 
 	writeln('hello, SPL.');
 end.
+

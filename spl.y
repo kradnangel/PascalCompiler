@@ -1370,8 +1370,7 @@ expression_list
 	rtn = top_call_stack();
 
 	/* next argument. */
-	if (arg)
-	{
+	if (arg) {
 		arg = arg->next;
 	}
 
@@ -1382,132 +1381,56 @@ expression_list
 |expression
 {
 	args = NULL;
-
 	/* first argument. set rtn to symtab of current function call. */
 	rtn = top_call_stack();
 
 	if(rtn)
 		arg = rtn->args;
-	else
-	{
+	else {
 		parse_error("error parse sys call list.", "");
 		return 0;
 	}
-
 	args = arg_tree(args, rtn, arg, $1);
-
 	$$ = args;
-
 }
 ;
-
+/* >= > <= < = <> */
 expression
 :expression {}
-oGE expr
-{
-	$$ = compare_expr_tree(GE, $1, $4);
-}
+oGE expr {$$ = compare_expr_tree(GE, $1, $4);}
 |expression {}
-oGT expr
-{
-	$$ = compare_expr_tree(GT, $1, $4);
-}
+oGT expr {$$ = compare_expr_tree(GT, $1, $4);}
 |expression {}
-oLE expr
-{
-	$$ = compare_expr_tree(LE, $1, $4);
-}
-|expression
-{
-}
-oLT expr
-{
-	$$ = compare_expr_tree(LT, $1, $4);
-}
-|expression
-{
-}
-oEQUAL expr
-{
-	$$ = compare_expr_tree(EQ, $1, $4);
-}
-|expression
-{
-}
-oUNEQU  expr
-{
-	$$ = compare_expr_tree(NE, $1, $4);
-}
-|expr
-{
-	$$ = $1;
-}
+oLE expr {$$ = compare_expr_tree(LE, $1, $4);}
+|expression {}
+oLT expr {$$ = compare_expr_tree(LT, $1, $4);}
+|expression {}
+oEQUAL expr {$$ = compare_expr_tree(EQ, $1, $4);}
+|expression {}
+oUNEQU  expr {$$ = compare_expr_tree(NE, $1, $4);}
+|expr {$$ = $1;}
 ;
-
-expr:expr
-{
-}
-oPLUS term
-{
-	$$ = binary_expr_tree(ADD, $1, $4);
-}
-|expr
-{
-}
-oMINUS  term
-{
-	$$ = binary_expr_tree(SUB, $1, $4);
-}
-|expr
-{
-}
-kOR term
-{
-	$$ = binary_expr_tree(OR, $1, $4);
-}
-|term
-{
-	$$ = $1;
-}
+/* + - or */
+expr:expr {}
+oPLUS term {$$ = binary_expr_tree(ADD, $1, $4);}
+|expr {}
+oMINUS  term {$$ = binary_expr_tree(SUB, $1, $4);}
+|expr {}
+kOR term {$$ = binary_expr_tree(OR, $1, $4);}
+|term {$$ = $1;}
 ;
-
-term    :term
-{
-}
-oMUL  factor
-{
-	$$ = binary_expr_tree(MUL, $1, $4);
-}
-|  term
-{
-}
-oDIV factor
-{
-	$$ = binary_expr_tree(DIV, $1, $4);
-}
+/* * div mod and */
+term:term {}
+oMUL  factor {$$ = binary_expr_tree(MUL, $1, $4);}
 |term {}
-kDIV factor
-{
-	$$ = binary_expr_tree(DIV, $1, $4);
-}
-|term
-{
-}
-kMOD factor
-{
-	$$ = binary_expr_tree(MOD, $1, $4);
-}
-|term
-{
-}
-kAND factor
-{
-	$$ = binary_expr_tree(AND, $1, $4);
-}
-|factor
-{
-	$$ = $1;
-}
+oDIV factor {$$ = binary_expr_tree(DIV, $1, $4);}
+|term {}
+kDIV factor {$$ = binary_expr_tree(DIV, $1, $4);}
+|term {}
+kMOD factor {$$ = binary_expr_tree(MOD, $1, $4);}
+|term {}
+kAND factor {$$ = binary_expr_tree(AND, $1, $4);}
+|factor {$$ = $1;}
 ;
 
 factor: yNAME
@@ -1653,8 +1576,7 @@ args_list
 	rtn = top_call_stack();
 
 	/* next argument. */
-	if (arg)
-	{
+	if (arg) {
 		arg = arg->next;
 	}
 
@@ -1690,6 +1612,20 @@ args_list
 symbol *term_stk[MAX_TERM];
 int term_stk_tos = MAX_TERM - 1;
 
+int parser_init()
+{
+	memset(&ast_forest, 0, sizeof(ast_forest));
+	memset(&para_list, 0, sizeof(para_list));
+	memset(&case_list, 0, sizeof(case_list));
+	if_label_count = 0;	repeat_label_count = 0;
+	do_label_count = 0;	while_label_count = 0;
+	case_label_count = 0;	switch_label_count =0; 
+	for_label_count = 0;
+
+	return 0;
+}
+
+/* term stack */
 void push_term_stack(symbol * p)
 {
 	if(term_stk_tos == 0)
@@ -1705,7 +1641,7 @@ symbol * pop_term_stack()
   		internal_error("terminal stack underflow");
   		return NULL;
 	}
-    else
+    	else
 		return term_stk[++term_stk_tos];
 }
 
@@ -1719,19 +1655,7 @@ symbol* top_term_stack()
 		return term_stk[term_stk_tos + 1];
 }
 
-int parser_init()
-{
-	memset(&ast_forest, 0, sizeof(ast_forest));
-	memset(&para_list, 0, sizeof(para_list));
-	memset(&case_list, 0, sizeof(case_list));
-	if_label_count = 0;	repeat_label_count = 0;
-	do_label_count = 0;	while_label_count = 0;
-	case_label_count = 0;	switch_label_count =0; 
-	for_label_count = 0;
-
-	return 0;
-}
-
+/* AST stack */
 Tree ast_stk[MAX_TERM];
 int ast_stk_tos = MAX_TERM - 1;
 
@@ -1750,7 +1674,7 @@ Tree pop_ast_stack()
   		internal_error("ast tree stack underflow");
   		return NULL;
 	}
-    else
+    	else
 		return ast_stk[++ast_stk_tos];
 }
 

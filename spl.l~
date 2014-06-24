@@ -177,7 +177,7 @@ static int check(char *lex)
 			printf("token: keyword - %s ", Keytable[mid].name);
 			if (Keytable[mid].key == SYS_FUNCT
 				|| Keytable[mid].key == SYS_PROC) {
-				yylval.p_lex = &Keytable[mid];
+				yylval.p_lex = Keytable[mid].name;
 				printf(",yylval.p_lex = %s .\n", yylval.p_lex);
 			}
 			else if (Keytable[mid].key == SYS_CON) {

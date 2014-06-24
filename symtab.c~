@@ -34,6 +34,12 @@ int align(int bytes) {
     return bytes;
 }
 
+void enter_symtab_queue(symtab *tab)
+{
+    if (last_symtab < SYMTAB_QUEUE_SIZE)
+        symtab_queue[last_symtab ++] = tab;
+}
+
 symtab *new_symtab(symtab *parent)
 {
     symtab *p;
@@ -148,12 +154,6 @@ symbol *reverse_parameters(symtab *ptab)
     }
     ptab->args = new_list;
     return ptab->args;
-}
-
-void enter_symtab_queue(symtab *tab)
-{
-    if (last_symtab < SYMTAB_QUEUE_SIZE)
-        symtab_queue[last_symtab ++] = tab;
 }
 
 void add_symbol_to_table(symtab*tab, symbol *sym)
