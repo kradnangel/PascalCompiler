@@ -1,5 +1,5 @@
 NAME = mypas
-DOTH=common.h symtab.h x86.h tree.h dag.h
+DOTH=common.h symtab.h tree.h dag.h
 
 SOURCE= common.h \
 				error.c \
@@ -7,8 +7,6 @@ SOURCE= common.h \
 				symtab.c \
 				symtab.h \
 				type.c \
-				x86.c \
-				x86.h \
 				x86rtl.asm \
 				rule.c \
 				lex.yy.c \
@@ -31,7 +29,6 @@ OBJS=error.o \
 			  alloc.o \
 			  list.o \
 			  dag.o \
-			  x86.o \
 			  x86linux.o \
 			  opti.o
 
