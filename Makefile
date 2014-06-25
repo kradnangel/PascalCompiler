@@ -8,7 +8,7 @@ SOURCE= common.h \
 				symtab.h \
 				type.c \
 				x86rtl.asm \
-				rule.c \
+				yacc.c \
 				lex.yy.c \
 				new.c \
 				tree.c \
@@ -24,7 +24,7 @@ OBJS=error.o \
 			  main.o \
 			  symtab.o \
 			  type.o \
-			  rule.o \
+			  yacc.o \
 			  tree.o \
 			  new.o \
 			  list.o \
@@ -32,7 +32,7 @@ OBJS=error.o \
 			  x86linux.o \
 			  cf.o
 
-MAKED = lex.yy.c rule.c rule.h
+MAKED = lex.yy.c yacc.c yacc.h
 
 .SUFFIXES:.c
 
@@ -47,11 +47,11 @@ new.o: new.c common.h
 %.o:%.c $(DOTH)
 	gcc -g -Wall -c $<
 
-lex.yy.c:spl.l rule.c
-	flex spl.l
+lex.yy.c:lex.l yacc.c
+	flex lex.l
 
-rule.c:spl.y
-	bison -d -o rule.c $<
+yacc.c:yacc.y
+	bison -d -o yacc.c $<
 
 $(NAME):$(OBJS) $(DOTH)
 	gcc -o $(NAME) -g -Wall $(OBJS)
