@@ -7,7 +7,6 @@
 #include "symtab.h"
 #include "error.h"
 #include "tree.h"
-#include "x86.h"
 
 extern char *yytext;
 symtab *ptab;

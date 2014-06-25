@@ -3,23 +3,33 @@
 #include  "common.h"
 #include  "symtab.h"
 #include  "error.h"
-#include  "x86.h"
-
-#ifdef _MSDOS_
-#include  <dos.h>
-#elif defined __linux__
 #include <time.h>
-#endif
-
 #include  _YTAB_H_
-#define  MAX_LOOP_LEVEL  16
-#define  STMT_STACK_SIZE 64
-#define  MAX_CALL_LEVEL 16
+#define O fprintf(codfp,
+#define P fprintf(datfp,
+#define TYPEERR parse_error("Type Error.","");
+#define LABEL_SLINK "static_link"
+#define LABEL_RETVAL    "retval_addr"
+#define LABEL_HIRETVAL  "retval_addr_hi"
+#define STACK_SEG       512
+#define  MAX_LOOP  16
+#define  MAX_CALL 16
+#define  STMT_STACK 64
 
-static symtab *rtn =NULL;
+void set_call_stack_top(symbol *);
+void push_call_stack(symtab *);
+symtab *top_call_stack();
+symtab *pop_call_stack();
+symbol *top_call_symbol();
+
+static symtab *ret = NULL;
 static symbol *arg = NULL;
-static Symbol	p;
-static Symtab	ptab;
+static Symbol p;
+static Symtab ptab;
+static int gen_level = 0;
+static int emit_linux_address = 0;
+static int jump_index = 0;
+extern char datname[FILE_NAME_LEN];
 
 static void emit_linux_write1(int arg_type);
 static void emit_linux_sqrt(int arg_type);
@@ -28,9 +38,6 @@ static void emit_linux_abs(int arg_type);
 static void emit_linux_sqr(int arg_type);
 static void emit_linux_read1(int arg_type);
 static void emit_linux_writeln(int arg_type);
-
-static int gen_level = 0;
-
 static void emit_linux_program_head();
 static void emit_linux_program_prologue(symtab *);
 static void emit_linux_program_epilogue(symtab *);
@@ -52,10 +59,18 @@ static void do_linux_factor(symbol *);
 static void do_linux_array_factor(symbol *);
 static void do_linux_record_factor(symbol *, symbol *);
 static void do_linux_first_arg(int);
-static int emit_linux_address = 0;
 
-extern char datname[FILE_NAME_LEN];
-
+static int blockbegin(BlockContext *context){return 0;}
+static int blockend(BlockContext *context){return 0;}
+static int globalvariable(Symbol symbol){return 0;}
+static int localvariable(Symbol symbol){return 0;}
+static int deflabel(Symbol symbol){return 0;}
+static int defaddress(Symbol p, Symbol q, long n){return 0;}
+static int defconst(int type, Value value){return 0;}
+static int allocspace(int n){return n;}
+static int marknode(Node rootnode){return 0;}
+static void defexport(Symbol sym){}
+static void defimport(Symbol sym){}
 #ifdef LABEL_RETVAL
 #undef LABEL_RETVAL
 #define LABEL_RETVAL "-4(%ebp)"
@@ -67,1789 +82,1325 @@ extern char datname[FILE_NAME_LEN];
 #define LABEL_SLINK	"8(%ebp)"
 #endif
 
-static void do_linux_sys_routine(int routine_id, int arg_type)
-{
-    switch(routine_id)
-    {
-    case fABS:
-        emit_linux_abs(arg_type);
-        break;
-    case fODD:
-        emit_linux_odd(arg_type);
-        break;
-    case  fPRED:
-        fprintf(codfp, "\t\tdecl\t%%eax\n");
-        break;
-    case  fSQR:
-        emit_linux_sqr(arg_type);
-        break;
-    case fSQRT:
-        emit_linux_sqrt(arg_type);
-        break;
-    case fSUCC:
-        fprintf(codfp, "\t\tincl\t%%eax\n");
-        break;
-    case pREAD:
-        emit_linux_read1(arg_type);
-        break;
-    case pREADLN:
-        emit_linux_read1(arg_type);
-        break;
-    case pWRITE:
-        emit_linux_write1(arg_type);
-        break;
-    case  pWRITELN:
-        emit_linux_writeln(arg_type);
-        break;
-    default:
-        break;
-    }
+static int calltime = MAX_CALL - 1;
+static symbol *call_sym[MAX_CALL];
+static symtab *call_stk[MAX_CALL];
+
+void push_call_stack(symtab *sym){
+    call_stk[calltime] = sym;
+    call_sym[calltime] = sym->args;
+    ret = sym;
+    calltime--;
+    if (calltime == -1)
+        internal_error("Stack Overflow.");
 }
 
-static void emit_linux_read1(int arg_type)
-{
-    fprintf(codfp, "\t\tpushl\t%%eax\n");
-    fprintf(codfp, "\t\tpushl\t%%ebp\n");
-    switch(arg_type)
-    {
-    case  TYPE_REAL:
-        break;
-    case  TYPE_INTEGER:
-        fprintf(codfp, "\t\tcall\t_read_int\n");
-        break;
-    case TYPE_STRING:
-        fprintf(codfp, "\t\tcall\t_read_string\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\tcall\t_read_char\n");
-
-        break;
-    case   TYPE_BOOLEAN:
-    default:
-        parse_error("operand type do not match operator.", "");
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+symtab *pop_call_stack(){
+    calltime++;
+    if (calltime == MAX_CALL)
+        internal_error("Stack Underflow.");
+    ret = call_stk[calltime];
+    arg = call_sym[calltime];
+    return call_stk[calltime];
 }
 
-static void emit_linux_write1(int arg_type)
-{
-    switch(arg_type)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tpushl\t%%eax\n");
-        fprintf(codfp, "\t\tpushl\t%%ebp\n");
-        fprintf(codfp, "\t\tcall\t_write_int\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\tpushl\t%%eax\n");
-        fprintf(codfp, "\t\tpushl\t%%ebp\n");
-        fprintf(codfp, "\t\tcall\t_write_char\n");
-        break;
-    case TYPE_STRING:
-        fprintf(codfp, "\t\tpushl\t%%eax\n");
-        fprintf(codfp, "\t\tpushl\t%%ebp\n");
-        fprintf(codfp, "\t\tcall\t_write_string\n");
-        break;
-    default:
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+symtab *top_call_stack(){
+    return call_stk[calltime + 1];
 }
 
-static void emit_linux_writeln(int arg_type)
-{
-    switch(arg_type)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tpushl\t%%eax\n");
-        fprintf(codfp, "\t\tpushl\t%%ebp\n");
-        fprintf(codfp, "\t\tcall\t_writeln_int\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\tpushl\t%%eax\n");
-        fprintf(codfp, "\t\tpushl\t%%ebp\n");
-        fprintf(codfp, "\t\tcall\t_writeln_char\n");
-        break;
-    case  TYPE_STRING:
-        fprintf(codfp, "\t\tpushl\t%%eax\n");
-        fprintf(codfp, "\t\tpushl\t%%ebp\n");
-        fprintf(codfp, "\t\tcall\t_writeln_string\n");
-        break;
-    default:
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+void set_call_stack_top(symbol *p){
+    call_sym[calltime + 1] = p;
 }
 
-static void emit_linux_abs(int arg_type)
-{
-    fprintf(codfp, "\t\tpushl\t%%ebp\n");
-    switch(arg_type)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tcall\t_abs_int\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\txorb\t%%ah,%%ah\n");
-        fprintf(codfp, "\t\tcall\t_abs_int\n");
-        break;
-    default:
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+symbol *top_call_symbol(){
+    return call_sym[calltime + 1];
 }
 
-static void emit_linux_sqr(int arg_type)
-{
-    fprintf(codfp, "\t\tpushl\t%%bp\n");
-    switch(arg_type)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tcall\t_sqr_int\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\txorb\t%%ah,%%ah\n");
-        fprintf(codfp, "\t\tcall\t_sqr_int\n");
-        break;
-    default:
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+static void do_linux_sys_routine(int routine_id, int arg_type){
+	switch(routine_id){
+		case fABS:
+			emit_linux_abs(arg_type);
+			break;
+		case fODD:
+			emit_linux_odd(arg_type);
+			break; 
+		case fSQR:
+			emit_linux_sqr(arg_type);
+			break;
+		case fSQRT:
+			emit_linux_sqrt(arg_type);
+			break;
+		case fSUCC:
+			O "  incl %%eax\n");
+			break;
+		case  fPRED:
+			O "  decl %%eax\n");
+			break;
+		case pREAD:
+			emit_linux_read1(arg_type);
+			break;
+		case pWRITE:
+			emit_linux_write1(arg_type);
+			break;
+		case pREADLN:
+			emit_linux_read1(arg_type);
+			break;
+		case  pWRITELN:
+			emit_linux_writeln(arg_type);
+			break;
+		default:
+			break;
+	}
 }
 
-static void emit_linux_odd(int arg_type)
-{
-    fprintf(codfp, "\t\tpushl\t%%bp\n");
-    switch(arg_type)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tcall\t_odd_int\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\txorb\t%%ah,%%ah\n");
-        fprintf(codfp, "\t\tcall\t_odd_int\n");
-        break;
-    default:
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+static void emit_linux_read1(int arg_type){
+	O "  pushl %%eax\n");
+	O "  pushl %%ebp\n");
+	switch(arg_type){
+		case  TYPE_INTEGER:
+			O "  call _read_int\n");
+			break;
+		case  TYPE_REAL:
+			break;
+		case TYPE_CHAR:
+			O "  call _read_char\n");
+			break;
+		case TYPE_STRING:
+			O "  call _read_string\n");
+			break;
+		case   TYPE_BOOLEAN:
+		default:
+			parse_error("Type Error.", "");
+			break;
+	}
+	O "  addl $8, %%esp\n");
 }
 
-static void emit_linux_sqrt(int arg_type)
-{
-    fprintf(codfp, "\t\tpushl\t%%ebp\n");
-    switch(arg_type)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tcall\t_sqrt_int\n");
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\txorb\t%%ah,%%ah\n");
-        fprintf(codfp, "\t\tcall\t_sqrt_int\n");
-        break;
-    default:
-        break;
-    }
-	fprintf(codfp, "\t\taddl\t$8, %%esp\n");
+static void emit_linux_write1(int arg_type){
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  pushl %%eax\n");
+			O "  pushl %%ebp\n");
+			O "  call _write_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  pushl %%eax\n");
+			O "  pushl %%ebp\n");
+			O "  call _write_char\n");
+			break;
+		case TYPE_STRING:
+			O "  pushl %%eax\n");
+			O "  pushl %%ebp\n");
+			O "  call _write_string\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
 }
 
-static void emit_linux_program_prologue(symtab *ptab)
-{
-
-    fprintf(codfp,"\n\n#---program %s ---",ptab->name);
-    emit_linux_program_head();
-
+static void emit_linux_writeln(int arg_type){
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  pushl %%eax\n");
+			O "  pushl %%ebp\n");
+			O "  call _writeln_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  pushl %%eax\n");
+			O "  pushl %%ebp\n");
+			O "  call _writeln_char\n");
+			break;
+		case  TYPE_STRING:
+			O "  pushl %%eax\n");
+			O "  pushl %%ebp\n");
+			O "  call _writeln_string\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
 }
 
-/* char datname[]; */
-static void emit_linux_program_head()
-{
-    fprintf(datfp, ".file \"%s\"\n\n", datname);
-	fprintf(datfp, "sys_call_id = 0x80\n");
-	fprintf(datfp, "exit_syscall = 0x1\n\n");
+static void emit_linux_abs(int arg_type){
+	O "  pushl %%ebp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _abs_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _abs_int\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
 }
 
-static void emit_linux_program_epilogue(symtab *ptab)
-{
-    symbol *p;
+static void emit_linux_sqr(int arg_type){
+	O "  pushl %%bp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _sqr_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _sqr_int\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
+}
 
-	fprintf(codfp, "\n\n.globl _start\n");
-	fprintf(codfp, "_start:\n");
-	fprintf(codfp, "\t\tcall _main\n");
-	fprintf(codfp, "\t\tmovl $0, %%ebx\n");
-	fprintf(codfp, "\t\tmovl $exit_syscall, %%eax\n");
-	fprintf(codfp, "\t\tint  $sys_call_id\n");
-	fprintf(codfp, ".ident	\"SPL: 0.1.5\"\n");
+static void emit_linux_odd(int arg_type){
+	O "  pushl %%bp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _odd_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _odd_int\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
+}
 
-    fprintf(codfp, "\n#.bss variables\n");
+static void emit_linux_sqrt(int arg_type){
+	O "  pushl %%ebp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _sqrt_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _sqrt_int\n");
+			break;
+		default:
+			break;
+		}
+		O "  addl $8, %%esp\n");
+}
 
-    for(p = ptab->locals; p; p = p->next)
-    {
-        if (p->defn != DEF_CONST)
-        {
-				switch (p->type->type_id)
-				{
-				case 	TYPE_CHAR:
-					fprintf(codfp, "\t\t.comm %s,%d,%d\n", p->rname, IR->charmetric.size, IR->intmetric.align);
-					break;
-				case	TYPE_BOOLEAN:
-				case 	TYPE_INTEGER:
-					fprintf(codfp, "\t\t.comm %s,%d,%d\n", p->rname, IR->intmetric.size, IR->intmetric.align);
-					break;
-				case 	TYPE_REAL:
-					break;
-				case 	TYPE_STRING:
-					break;
-				case TYPE_ARRAY:
-					if(p->type_link->last->type->type_id == TYPE_INTEGER
-							|| p->type_link->last->type->type_id == TYPE_BOOLEAN)
-							/*
-						fprintf(datfp,"%s\t\tdw\t0%xh dup (?)\n"
-								,p->rname,p->type_link->num_ele);
-								*/
-						fprintf(codfp,"\t\t.comm %s, %d, %d\n"
-								,p->rname, p->type_link->num_ele * IR->intmetric.size, 
-								IR->intmetric.align);
-					else if(p->type_link->last->type->type_id ==
-							TYPE_CHAR)
-							/*
-						fprintf(datfp,"%s\t\tdb\t0%xh dup (?)\n"
-								,p->rname,p->type_link->num_ele);
-								*/
-						fprintf(codfp,"\t\t.comm %s, %d, %d\n"
-								,p->rname,p->type_link->num_ele,
-								IR->intmetric.align);
+static void emit_linux_program_prologue(symtab *ptab){
+	O "\n\n#---program %s ---",ptab->name);
+	emit_linux_program_head();
+}
 
-					else
-						parse_error("complex array element not supported","");
-					if(p->defn != DEF_CONST)
+static void emit_linux_program_head(){
+	P ".file \"%s\"\n\n", datname);
+	P "sys_call_id = 0x80\n");
+	P "exit_syscall = 0x1\n\n");
+}
+
+static void emit_linux_program_epilogue(symtab *ptab){
+	symbol *p;
+	O "\n\n.globl _start\n");
+	O "_start:\n");
+	O "  call _main\n");
+	O "  movl $0, %%ebx\n");
+	O "  movl $exit_syscall, %%eax\n");
+	O "  int  $sys_call_id\n");
+	O ".ident	\"SPL: 0.1.5\"\n");
+	O "\n#.bss variables\n");
+	for(p = ptab->locals; p; p = p->next){
+		if (p->defn != DEF_CONST){
+				switch (p->type->type_id){
+					case TYPE_BOOLEAN:
+					case TYPE_INTEGER:
+						O "  .comm %s,%d,%d\n", p->rname, IR->intmetric.size, IR->intmetric.align);
+						break;
+					case TYPE_CHAR:
+						O "  .comm %s,%d,%d\n", p->rname, IR->charmetric.size, IR->intmetric.align);
+					   break;
+					case TYPE_ARRAY:
+						if(p->type_link->last->type->type_id == TYPE_INTEGER
+						   || p->type_link->last->type->type_id == TYPE_BOOLEAN)
+							O"  .comm %s, %d, %d\n" , p->rname, 
+							p->type_link->num_ele * IR->intmetric.size, IR->intmetric.align);
+						else if(p->type_link->last->type->type_id == TYPE_CHAR)
+							O"  .comm %s, %d, %d\n", p->rname, p->type_link->num_ele, IR->intmetric.align);
+						else
+							parse_error("Array Element Unsupported.","");
+						if(p->defn != DEF_CONST)
+							continue;
+						break;
+					case   TYPE_RECORD:
+						O"  .comm %s, %d, %d\n", p->rname, p->type_link->size, IR->intmetric.align);
 						continue;
-					break;
-				case   TYPE_RECORD:
-					/*
-					fprintf(datfp,"%s\t\tdb\t0%xh dup (?)\n"
-							,p->rname,p->type_link->size);
-							*/
-					fprintf(codfp,"\t\t.comm %s, %d, %d\n"
-							,p->rname, p->type_link->size,
-							IR->intmetric.align);
-					continue;
-				default:
-					break;
+					default:
+						break;
 				}
 		}
-    }
-
-	/* global variable as .data */
-	fprintf(datfp, ".data\n");
-
-    for(p = ptab->locals; p; p = p->next)
-    {
-        if (p->defn == DEF_CONST)
-        {
-				switch (p->type->type_id)
-				{
-				case 	TYPE_CHAR:
-					fprintf(datfp, ".globl %s\n", p->rname);
-					/* fprintf(datfp, "\t\t.align %d\n", IR->charmetric.align); */
-					fprintf(datfp, "\t\t.type %s @object\n", p->rname);
-					fprintf(datfp, "\t\t.size %s, %d\n", p->rname, IR->charmetric.size);
-					fprintf(datfp, "%s:\n", p->rname);
-					fprintf(datfp, "\t\t.byte %d\n", p->v.c);
-					break;
-				case	TYPE_BOOLEAN:
-				case 	TYPE_INTEGER:
-					fprintf(datfp, ".globl %s\n", p->rname);
-					fprintf(datfp, "\t\t.align %d\n", IR->intmetric.align);
-					fprintf(datfp, "\t\t.type %s @object\n", p->rname);
-					fprintf(datfp, "\t\t.size %s, %d\n", p->rname, IR->intmetric.size);
-					fprintf(datfp, "%s:\n", p->rname);
-					fprintf(datfp, "\t\t.long %d\n", p->v.i);
-					break;
-				case 	TYPE_REAL:
-					break;
-				case 	TYPE_STRING:
-					fprintf(datfp, ".globl %s\n", p->rname);
-					fprintf(datfp, "\t\t.section .rodata\n");
-					fprintf(datfp, "\t\t.align %d\n", IR->pointermetric.align);
-
-					fprintf(datfp, ".LC%s:\n", p->rname);
-					if ((p->v.s[0] == '\'') && (p->v.s[strlen(p->v.s) - 1] == '\''))
-					{
-						p->v.s[strlen(p->v.s) - 1] = '\0';
-						fprintf(datfp, "\t\t.string \"%s\"\n", p->v.s + 1);
-					}
-					else
-						fprintf(datfp, "\t\t.string \"%s\"\n", p->v.s);
-					fprintf(datfp, "\t\t.data\n");
-					fprintf(datfp, "\t\t.align %d\n", IR->pointermetric.align);
-					fprintf(datfp, "\t\t.type %s @object\n", p->rname);
-					fprintf(datfp, "\t\t.size %s, %d\n", p->rname, IR->pointermetric.size);
-					fprintf(datfp, "%s:\n", p->rname);
-					fprintf(datfp, "\t\t.long .LC%s\n", p->rname);
-					break;
-				case TYPE_ARRAY:
-					break;
-				case TYPE_RECORD:
-					break;
-				default:
-					break;
+	}
+	P ".data\n");
+	for(p = ptab->locals; p; p = p->next){
+		if (p->defn == DEF_CONST){
+				switch (p->type->type_id){
+					case TYPE_BOOLEAN:
+					case TYPE_INTEGER:
+						P ".globl %s\n", p->rname);
+						P "  .align %d\n", IR->intmetric.align);
+						P "  .type %s @object\n", p->rname);
+						P "  .size %s, %d\n", p->rname, IR->intmetric.size);
+						P "%s:\n", p->rname);
+						P "  .long %d\n", p->v.i);
+						break;
+                    case TYPE_CHAR:
+                        P ".globl %s\n", p->rname);
+                        P "  .type %s @object\n", p->rname);
+                        P "  .size %s, %d\n", p->rname, IR->charmetric.size);
+                        P "%s:\n", p->rname);
+                        P "  .byte %d\n", p->v.c);
+                        break;
+					case TYPE_STRING:
+						P ".globl %s\n", p->rname);
+						P "  .section .rodata\n");
+						P "  .align %d\n", IR->pointermetric.align);
+						P ".LC%s:\n", p->rname);
+						if ((p->v.s[0] == '\'') && (p->v.s[strlen(p->v.s) - 1] == '\'')){
+							p->v.s[strlen(p->v.s) - 1] = '\0';
+							P "  .string \"%s\"\n", p->v.s + 1);
+						}else
+							P "  .string \"%s\"\n", p->v.s);
+						P "  .data\n");
+						P "  .align %d\n", IR->pointermetric.align);
+						P "  .type %s @object\n", p->rname);
+						P "  .size %s, %d\n", p->rname, IR->pointermetric.size);
+						P "%s:\n", p->rname);
+						P "  .long .LC%s\n", p->rname);
+						break;
+					default:
+						break;
 				}
 		}
-    }
+	}
 }
 
-static void emit_linux_main_prologue(symtab *ptab)
-{
-    fprintf(codfp,"\n\n# --- main routine ----\n");
-
-	fprintf(codfp, "\t\t.text\n");
-	fprintf(codfp, ".globl _main\n");
-	fprintf(codfp, "\t\t.type _main, @function\n");
-	fprintf(codfp, "_main:\n");
-	fprintf(codfp, "\t\tpushl\t%%ebp\n");
-	fprintf(codfp, "\t\tmovl\t%%esp, %%ebp\n");
-
+static void emit_linux_main_prologue(symtab *ptab){
+	O"\n\n# --- main routine ----\n");
+	O "  .text\n");
+	O ".globl _main\n");
+	O "  .type _main, @function\n");
+	O "_main:\n");
+	O "  pushl %%ebp\n");
+	O "  movl %%esp, %%ebp\n");
 }
 
-static void emit_linux_main_epilogue(symtab *ptab)
-{
-	fprintf(codfp,"\t\tleave\n");
-    fprintf(codfp,"\t\tret\n");
+static void emit_linux_main_epilogue(symtab *ptab){
+	O"  leave\n");
+	O"  ret\n");
 }
 
-static void emit_linux_routine_prologue(symtab *ptab)
-{
-    if(ptab->defn == DEF_PROG)
-        return;
-    fprintf(codfp,"\n\n# routine : %s \n",ptab->name);
-    emit_linux_local_args(ptab);
-	fprintf(codfp, "\t\t.text\n");
-	fprintf(codfp, ".globl %s\n", ptab->rname);
-	fprintf(codfp, "\t\t.type %s, @function\n", ptab->rname);
-	fprintf(codfp, "%s:\n", ptab->rname);
-	fprintf(codfp, "\t\tpushl\t%%ebp\n");
-	fprintf(codfp, "\t\tmovl\t%%esp, %%ebp\n");
-    if(ptab->defn == DEF_FUNCT)
-        fprintf(codfp,"\t\tsubl\t$8, %%esp\n");
-    fprintf(codfp,"\t\tsubl\t$%d, %%esp\n",ptab->local_size);
+static void emit_linux_routine_prologue(symtab *ptab){
+	if(ptab->defn == DEF_PROG)
+		return;
+	O "\n\n# routine : %s \n", ptab->name);
+	emit_linux_local_args(ptab);
+	O "  .text\n");
+	O ".globl %s\n", ptab->rname);
+	O "  .type %s, @function\n", ptab->rname);
+	O "%s:\n", ptab->rname);
+	O "  pushl %%ebp\n");
+	O "  movl %%esp, %%ebp\n");
+	if(ptab->defn == DEF_FUNCT)
+		O"  subl $8, %%esp\n");
+	O "  subl $%d, %%esp\n", ptab->local_size);
 }
 
-static void emit_linux_local_args(symtab *ptab)
-{
-    symbol *p;
-    char tp[10];
-
-    for(p = ptab->locals; p->next; p = p->next)
-    {
-        switch(p->type->type_id)
-        {
-        case TYPE_CHAR:
-            sprintf(tp, "byte  ptr");
-            break;
-        case TYPE_INTEGER:
-        case TYPE_BOOLEAN:
-            sprintf(tp, "word  ptr");
-            break;
-        case TYPE_REAL:
-            sprintf(tp, "dword  ptr");
-            break;
-        case TYPE_ARRAY:
-            if(p->type_link->last->type->type_id ==
-                    TYPE_INTEGER
-                    || p->type_link->last->type->type_id ==
-                    TYPE_BOOLEAN)
-                sprintf(tp, "word	ptr");
-            else if (p->type_link->last->type->type_id == TYPE_CHAR)
-                sprintf(tp, "byte	ptr");
-            break;
-        case TYPE_RECORD:
-            sprintf(tp, "byte  ptr");
-            break;
-        default:
-            break;
-        }
-
-        snprintf(p->rname, sizeof(p->rname) - 1, "-%d(%%ebp)",
-                p->offset);
-    }
-
-    for(p = ptab->args;p ;p = p->next)
-    {
-        switch(p->type->type_id)
-        {
-        case    TYPE_CHAR:
-            sprintf(tp, "byte  ptr");
-            break;
-        case    TYPE_INTEGER:
-        case    TYPE_BOOLEAN:
-            sprintf(tp, "word  ptr");
-            break;
-        case    TYPE_REAL:
-            sprintf(tp, "dword  ptr");
-            break;
-        default:
-            break;
-        }
-
-        snprintf(p->rname,sizeof(p->rname) - 1,"%d(%%ebp)",
-                p->offset);
-    }
+static void emit_linux_local_args(symtab *ptab){
+	symbol *p;
+	char tp[10];
+	for(p = ptab->locals; p->next; p = p->next){
+		switch(p->type->type_id){
+    		case TYPE_INTEGER:
+    		case TYPE_BOOLEAN:
+    			sprintf(tp, "word ptr");
+    			break;
+    		case TYPE_REAL:
+    			sprintf(tp, "dword ptr");
+    			break;
+            case TYPE_CHAR:
+                sprintf(tp, "byte ptr");
+                break;
+    		case TYPE_ARRAY:
+    			if(p->type_link->last->type->type_id ==	TYPE_INTEGER
+    			   || p->type_link->last->type->type_id == TYPE_BOOLEAN)
+    				sprintf(tp, "word ptr");
+    			else if (p->type_link->last->type->type_id == TYPE_CHAR)
+    				sprintf(tp, "byte ptr");
+    			break;
+    		case TYPE_RECORD:
+    			sprintf(tp, "byte ptr");
+    			break;
+    		default:
+    			break;
+		}
+		snprintf(p->rname, sizeof(p->rname) - 1, "-%d(%%ebp)", p->offset);
+	}
+	for(p = ptab->args;p ;p = p->next){
+		switch(p->type->type_id){
+    		case TYPE_INTEGER:
+    		case TYPE_BOOLEAN:
+    			sprintf(tp, "word  ptr");
+    			break;
+            case TYPE_CHAR:
+                sprintf(tp, "byte  ptr");
+                break;
+    		case TYPE_REAL:
+    			sprintf(tp, "dword  ptr");
+    			break;
+    		default:
+    			break;
+		}
+		snprintf(p->rname,sizeof(p->rname) - 1,"%d(%%ebp)", p->offset);
+	}
 }
 
-static void emit_linux_routine_epilogue(symtab *ptab)
-{
-    if(ptab->defn == DEF_PROG)
-        return;
+static void emit_linux_routine_epilogue(symtab *ptab){
+	if(ptab->defn == DEF_PROG)
+		return;
 
-    if(ptab->defn == DEF_FUNCT)
-    {
-        switch(ptab->type->type_id)
-        {
-        case  TYPE_INTEGER:
-        case  TYPE_BOOLEAN:
-            /* fprintf(codfp,"\n\t\tmovl\t%s, %%eax\n", LABEL_RETVAL); */
-            fprintf(codfp,"\n\t\tmovl\t%s, %%eax\n", LABEL_RETVAL); 
-            break;
+	if(ptab->defn == DEF_FUNCT){
+		switch(ptab->type->type_id){
+		case TYPE_INTEGER:
+		case TYPE_BOOLEAN:
+			O "\n  movl %s, %%eax\n", LABEL_RETVAL); 
+			break;
+		case TYPE_CHAR:
+			O "\n  xorb %%ah, %%ah\n");
+			O "\n  movl %s, %%eax\n", LABEL_RETVAL); 
+			break;
+		case TYPE_REAL:
+			break;
+		}
+	}
+	O "  leave\n");
+	O "  ret\n");
+	O "  .size %s, .-%s\n",	ptab->rname, ptab->rname);
+}
+
+static void emit_linux_dos_push_op(Type ptype){
+	switch(ptype->type_id){
+    	case  TYPE_BOOLEAN:
+    	case  TYPE_INTEGER:
         case  TYPE_CHAR:
-            fprintf(codfp,"\n\t\txorb\t%%ah, %%ah\n");
-            fprintf(codfp,"\n\t\tmovl\t%s, %%eax\n",
-							LABEL_RETVAL); 
-			/*
-            fprintf(codfp,"\n\t\tmovl\t%s, %%eax\n",
-                    LABEL_RETVAL);
-			*/
+    		O"  pushl %%eax\n");
+    		break;
+    	case  TYPE_REAL:
+    		O"  pushl %%edx\n");
+    		O"  pushl %%eax\n");
+    		break;
+	}
+}
+
+static void emit_linux_load_value(symbol *p){
+	if(p->defn == DEF_VARPARA){
+		O"  movl 4(%%ebp), %%ebx\n");
+		switch(p->type->type_id){
+    		case  TYPE_INTEGER:
+            case  TYPE_BOOLEAN:
+                O"  movl (%%ebx), %%eax\n");
+                break;
+            case  TYPE_CHAR:
+    			O"  xorl %%eax, %%eax\n");
+    			O"  movb (%%ebx), %%al\n");
+    			break;
+    		case TYPE_REAL:
+    			O"  movl (%%ebx), %%eax\n");
+    			O "  movl 4(%%ebx), %%edx\n");
+    			break;
+		}
+	}
+	else if (p->tab->level == 0 || p->tab == top_symtab_stack()){
+		switch(p->type->type_id){
+    		case TYPE_CHAR:
+    			O"  subl %%eax, %%eax\n");
+    			O"\b  movb %s, %%al\n", p->rname);
+    			break;
+    		case TYPE_INTEGER:
+    		case TYPE_BOOLEAN:
+    			O"   movl %s, %%eax\n",p->rname);
+    			break;
+    		case TYPE_ARRAY:
+    			O"  popl %%ebx\n");
+    			if(p->type_link->last->type->type_id == TYPE_INTEGER ||
+                   p->type_link->last->type->type_id == TYPE_BOOLEAN)
+    				O "  movl (%%ebx), %%eax\n");
+    			else if (p->type_link->last->type->type_id == TYPE_CHAR)
+    				O "  movb (%%ebx), %%al\n");
+    			break;
+    		default:
+    			break;
+    		}
+	}
+}
+
+static void emit_linux_load_address(symbol *p){
+	symtab *ptab;
+	int  i, n;
+	switch(p->defn){
+	case DEF_VARPARA:
+		O "  movl %s, %%eax\n", p->rname);
+		break;
+	case DEF_VAR:
+		if(p->tab->level == 0 || p->tab == top_symtab_stack()){
+			O "  leal %s, %%eax\n", p->rname);
+		}
+		else{
+			ptab = top_symtab_stack();
+			n = p->tab->level - ptab->level + 1;
+			O"  movl %%ebp, %%ebx\n");
+			for (i = 0; i < n; i++)
+				O "  movl %s, %%ebp\n", LABEL_SLINK);
+			O "  leal %s, %%eax\n",
+					p->rname);
+			O"  movl %%ebx, %%ebp\n");
+		}
+		break;
+	case DEF_VALPARA:
+		O "  leal %s, %%eax\n", p->rname);
+		break;
+	default:
+		break;
+	}
+}
+
+static void emit_linux_load_field(symbol*p){
+	if(!p)
+		return;
+	O "  popl %%ebx\n");
+	switch(p->type->type_id){
+    	case TYPE_INTEGER:
+    	case TYPE_BOOLEAN:
+    		O"  movl (%%ebx), %%eax\n");
+    		break;
+    	case TYPE_CHAR:
+    		O"  movb (%%ebx), %%al\n");
+    		break;
+    	default:
+    		break;
+	}
+}
+
+static void do_linux_function_assign(symtab *ptab, int srctype){
+	if(!ptab)
+		return;
+
+	if(ptab->type->type_id != srctype){
+		TYPEERR
+		return;
+	}
+	switch(ptab->type->type_id){
+    	case  TYPE_BOOLEAN:
+    	case  TYPE_INTEGER:
+    		O "  movl %%eax, %s\n", LABEL_RETVAL);
+    		break;
+    	case  TYPE_CHAR:
+            O "  xorb %%ah, %%ah\n");
+            O "  movl %%eax, %s\n", LABEL_RETVAL);
             break;
+    	default:
+    		break;
+	}
+}
+
+static void do_linux_procedure_call(symtab *ptab){
+	symtab *caller = top_symtab_stack();
+	symtab *callee = ptab;
+	int i, n;
+	if(!caller || !callee){
+		parse_error("Procedure Undefine.","");
+		return;
+	}
+	n = (callee->level) - (caller->level) + 1;
+	if(callee->level == caller->level + 1){
+		O"  pushl %%ebp\n");
+	}else if (callee->level == caller->level){
+		O "  pushl %s\n", LABEL_SLINK);
+	}
+	else if(callee->level < caller->level){
+		O "  movl %%ebp, %%ebx\n");
+		for(i = 0; i < n; i++)
+			O"  movl %s, %%ebp\n", LABEL_SLINK);
+		O "  pushl %%ebp\n");
+		O "  movl %%ebx, %%ebp\n");
+	}else
+		return;
+	O "  call %s\n", ptab->rname);
+	O "  addl $%d, %%esp\n", ptab->args_size + IR->intmetric.size);
+}
+
+static void do_linux_first_arg(int ptype){
+	ret = top_call_stack();
+	if(ret)
+		arg = ret->args;
+	else
+		return;
+	if(!arg)
+		return;
+	switch(arg->type->type_id){
+    	case  TYPE_CHAR:
+            O"  xorb %%ah, %%ah\n");
         case  TYPE_REAL:
             break;
-        }
-    }
-	/*
-    fprintf(codfp,"\t\tmov\tsp,bp\n");
-    fprintf(codfp,"\t\tpop\tbp\n");
-	*/
-	fprintf(codfp, "\t\tleave\n");
-	/*
-    fprintf(codfp,"\t\tret\t%04xh\n",ptab->args_size + 2);
-    fprintf(codfp,"\n%s\t\tendp\n",ptab->rname);
-	*/
-	fprintf(codfp, "\t\tret\n");
-	fprintf(codfp, "\t\t.size %s, .-%s\n",
-			ptab->rname, ptab->rname);
-}
-
-static void emit_linux_dos_push_op(Type ptype)
-{
-    switch(ptype->type_id)
-    {
-    case  TYPE_CHAR:
-    case  TYPE_BOOLEAN:
-    case  TYPE_INTEGER:
-        fprintf(codfp,"\t\tpushl\t%%eax\n");
-        break;
-    case  TYPE_REAL:
-        fprintf(codfp,"\t\tpushl\t%%edx\n");
-        fprintf(codfp,"\t\tpushl\t%%eax\n");
-        break;
-    }
-}
-
-static void emit_linux_load_value(symbol *p)
-{
-    if(p->defn == DEF_VARPARA)
-    {
-        /* fprintf(codfp,"\t\tmov\tbx,word ptr [bp+4]\n"); */
-        fprintf(codfp,"\t\tmovl\t4(%%ebp), %%ebx\n");
-        switch(p->type->type_id)
-        {
-        case  TYPE_CHAR:
-			/*
-            fprintf(codfp,"\t\txor\tah, ah\n");
-            fprintf(codfp,"\t\tmov\tal, byte ptr [bx]\n");
-			*/
-            fprintf(codfp,"\t\txorl\t%%eax, %%eax\n");
-            fprintf(codfp,"\t\tmovb\t(%%ebx), %%al\n");
-            break;
-        case TYPE_REAL:
-			/*
-            fprintf(codfp,"\t\tmov\tax,word ptr [bx]\n");
-            fprintf(codfp,"\t\tmov\tdx,word ptr [bx+2]\n");
-			*/
-            fprintf(codfp,"\t\tmovl\t(%%ebx), %%eax\n");
-			fprintf(codfp, "\t\tmovl\t4(%%ebx), %%edx\n");
-            break;
         case  TYPE_INTEGER:
         case  TYPE_BOOLEAN:
-            /* fprintf(codfp,"\t\tmov\tax,word ptr [bx]\n"); */
-            fprintf(codfp,"\t\tmovl\t(%%ebx), %%eax\n");
-            break;
-        }
-    }
-    else if (p->tab->level==0
-             ||p->tab==top_symtab_stack())
-    {
-        switch(p->type->type_id)
-        {
-        case  TYPE_CHAR:
-				/*
-            fprintf(codfp,"\t\tsub\tax.ax\n");
-            fprintf(codfp,"\b\t\tmov\tal, byte  ptr %s\n"
-                    ,p->rname);
-					*/
-            fprintf(codfp,"\t\tsubl\t%%eax, %%eax\n");
-            fprintf(codfp,"\b\t\tmovb\t%s, %%al\n"
-                    ,p->rname);
-            break;
-        case  	TYPE_REAL:
-            break;
-        case  	TYPE_INTEGER:
-        case  	TYPE_BOOLEAN:
-            /* fprintf(codfp,"\t\t\tmov\tax, word ptr %s\n",p->rname); */
-            fprintf(codfp,"\t\t\tmovl\t%s, %%eax\n",p->rname);
-            break;
-        case 	TYPE_ARRAY:
-            fprintf(codfp,"\t\tpopl\t%%ebx\n");
-            if(p->type_link->last->type->type_id ==
-                    TYPE_INTEGER
-                    ||p->type_link->last->type->type_id ==
-                    TYPE_BOOLEAN)
-                fprintf(codfp, "\t\tmovl\t(%%ebx), %%eax\n");
-            else if (p->type_link->last->type->type_id ==
-                     TYPE_CHAR)
-                fprintf(codfp, "\t\tmovb\t(%%ebx), %%al\n");
-            break;
         default:
-            break;
-        }
-    }
+    		O"  pushl %%eax\n");
+    		break;
+	}
 }
 
-static void emit_linux_load_address(symbol *p)
-{
-    symtab *ptab;
-    int  n,i;
-
-    switch(p->defn)
-    {
-    case DEF_VARPARA:
-        fprintf(codfp, "\t\tmovl\t%s, %%eax\n",
-                p->rname);
-        break;
-
-    case DEF_VAR:
-        if(p->tab->level == 0
-                || p->tab == top_symtab_stack())
-        {
-            /*
-            fprintf(codfp, "\t\tmov\tax,word ptr %s\n",
-            		p->rname);
-            */
-            fprintf(codfp, "\t\tleal\t%s, %%eax\n",
-                    p->rname);
-        }
-        else
-        {
-            ptab = top_symtab_stack();
-            n = p->tab->level - ptab->level + 1;
-            fprintf(codfp,"\t\tmovl\t%%ebp, %%ebx\n");
-            for (i = 0; i < n; i++)
-                fprintf(codfp, "\t\tmovl\t%s, %%ebp\n",
-                        LABEL_SLINK);
-            fprintf(codfp, "\t\tleal\t%s, %%eax\n",
-                    p->rname);
-            fprintf(codfp,"\t\tmovl\t%%ebx, %%ebp\n");
-        }
-        break;
-    case DEF_VALPARA:
-        fprintf(codfp, "\t\tleal\t%s, %%eax\n",
-                p->rname);
-        break;
-    default:
-        break;
-    }
+static void do_linux_args(int ptype){
+	arg = top_call_symbol();
+	if(arg->next)
+		arg = arg->next;
+	else
+		return;
+	set_call_stack_top(arg);
+	switch(arg->type->type_id){
+    	case TYPE_CHAR:
+            O"  xorb %%ah, %%ah\n");
+        case  TYPE_REAL:
+    		break;
+    	case  TYPE_INTEGER:
+    	case  TYPE_BOOLEAN:
+    	default:
+    		O"  pushl %%eax\n");
+    		break;
+	}
 }
 
-static void emit_linux_load_field(symbol*p)
-{
-    if(!p)
-        return;
-    fprintf(codfp, "\t\tpopl\t%%ebx\n");
-    switch(p->type->type_id)
-    {
-    case  TYPE_INTEGER:
-    case  TYPE_BOOLEAN:
-        fprintf(codfp,"\t\tmovl\t(%%ebx), %%eax\n");
-        break;
-    case  TYPE_CHAR:
-        fprintf(codfp,"\t\tmovb\t(%%ebx), %%al\n");
-        break;
-    default:
-        break;
-    }
-}
-
-static void do_linux_function_assign(symtab *ptab, int srctype)
-{
-    if(!ptab)
-        return;
-
-    if(ptab->type->type_id != srctype)
-    {
-        parse_error("operand type to not match operator.", "");
-        return;
-    }
-    switch(ptab->type->type_id)
-    {
-    case  TYPE_CHAR:
-		fprintf(codfp, "\t\txorb\t%%ah, %%ah\n");
-		fprintf(codfp, "\t\tmovl\t%%eax, %s\n",
-						LABEL_RETVAL);
-		/*
-        fprintf(codfp,"\t\txorb\t%%ah, %%ah\n");
-        fprintf(codfp,"\t\tmovl\t%%al, %s\n",
-                LABEL_RETVAL);
-		*/
-        break;
-    case  TYPE_BOOLEAN:
-    case  TYPE_INTEGER:
-		fprintf(codfp, "\t\tmovl\t%%eax, %s\n",
-				LABEL_RETVAL);
-		/*
-        fprintf(codfp,"\t\tmovl\t%%eax, %s\n",
-                LABEL_RETVAL);
-		*/
-        break;
-    case  TYPE_REAL:
-        break;
-    default:
-        break;
-    }
-}
-
-static void do_linux_procedure_call(symtab *ptab)
-{
-    symtab *caller = top_symtab_stack();
-    symtab *callee = ptab;
-    int n ;
-    int i ;
-
-    if(!caller || !callee)
-    {
-        parse_error("Undeclared procedure","");
-        return;
-    }
-
-    n = (callee->level) -(caller->level) + 1;
-    if(callee->level == caller->level + 1)
-    {
-        fprintf(codfp,"\t\tpushl\t%%ebp\n");
-    }
-    else if (callee->level == caller->level)
-    {
-        fprintf(codfp, "\t\tpushl\t%s\n",
-                LABEL_SLINK);
-    }
-    else if(callee->level < caller->level)
-    {
-        fprintf(codfp,"\t\tmovl\t%%ebp, %%ebx\n");
-        for(i = 0; i < n; i++)
-            fprintf(codfp,"\t\tmovl\t%s, %%ebp\n",
-                    LABEL_SLINK);
-        fprintf(codfp,"\t\tpushl\t%%ebp\n");
-        fprintf(codfp,"\t\tmovl\t%%ebx, %%ebp\n");
-    }
-    else
-        return;
-    fprintf(codfp,"\t\tcall\t%s\n", ptab->rname);
-	fprintf(codfp, "\t\taddl\t$%d, %%esp\n", ptab->args_size + IR->intmetric.size);
-
-}
-
-static void do_linux_first_arg(int ptype)
-{
-
-    rtn = top_call_stack();
-    if(rtn)
-        arg = rtn->args;
-    else
-        return;
-    if(!arg)
-        return;
-
-    switch(arg->type->type_id)
-    {
-    case  TYPE_REAL:
-        break;
-    case  TYPE_CHAR:
-        fprintf(codfp,"\t\txorb\t%%ah, %%ah\n");
-    case  TYPE_INTEGER:
-    case  TYPE_BOOLEAN:
-    default:
-        fprintf(codfp,"\t\tpushl\t%%eax\n");
-        break;
-    }
-}
-
-static void do_linux_args(int ptype)
-{
-    arg = top_call_symbol();
-
-    if(arg->next)
-        arg = arg->next;
-    else
-        return;
-    set_call_stack_top(arg);
-    switch(arg->type->type_id)
-    {
-    case  TYPE_REAL:
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp,"\t\txorb\t%%ah, %%ah\n");
-    case  TYPE_INTEGER:
-    case  TYPE_BOOLEAN:
-    default:
-        fprintf(codfp,"\t\tpushl\t%%eax\n");
-        break;
-    }
-}
-
-static void do_linux_assign(symbol *p, int srctype)
-{
-
-    symtab *ptab;
-
-    int  n,i;
-    
+static void do_linux_assign(symbol *p, int srctype){
+	symtab *ptab;
+	int  i, n;
 	if (!p)
-        return;
+		return;
+	if ((p->type->type_id != TYPE_ARRAY) && (p->type->type_id != TYPE_RECORD) && 
+        (p->type->type_id != srctype)){
+		TYPEERR
+		return;
+	}
+	if((p->type->type_id == TYPE_ARRAY) 
+		&& (srctype != p->type->first->type->type_id)){
+		TYPEERR
+		return;
+	}
+	if((p->type->type_id == TYPE_RECORD)) {
+		TYPEERR
+		return;
+	}
+	switch(p->defn){
+    	case DEF_VARPARA:
+    		O "  pushl %%eax\n");
+    		O "  movl %s, %%eax\n",	p->rname);
+    		break;
+    	case DEF_FIELD:
+    		O "  popl %%ebx\n");
+    		if(p->type->type_id == TYPE_INTEGER ||p->type->type_id == TYPE_BOOLEAN)
+    			O "  movl %%eax, (%%ebx)\n");
+    		else if (p->type->type_id == TYPE_CHAR)
+    			O "  movb %%al, (%%ebx)\n");
+    		return;
+    	case DEF_VAR:
+    	case DEF_CONST:
+    	case DEF_ELEMENT:
+    		if(p->type->type_id == TYPE_ARRAY){
+    			O"  pushl %%eax\n");
+    			break;
+    		}
+    		if(p->tab->level == 0 ||p->type->type_id == TYPE_REAL)
+    			break;
+    		else if( p->tab->level
+    				 && p->tab == top_symtab_stack()){
+    			O "  pushl %%eax\n");
+    			O "  leal %s, %%eax\n", p->rname);
+    			O "  pushl %%eax\n");
+    			break;
+    		} else {
+    			ptab = top_symtab_stack();
+    			n = ptab->level - p->tab->level;
+    			O "  pushl %%eax\n");
+    			O "  movl %%ebp, %%ebx\n");
+    			for(i =0;i<n;i++)
+    				O"  movl %s,%%ebp\n", LABEL_SLINK);
+    			O "  leal %s, %%eax\n", p->rname);
+    			O "  movl %%ebx, %%ebp\n");
+    			O "  pushl %%eax\n");
+    		}
+    		break;
+    	case DEF_VALPARA:
+    		if(p->tab->level==0 || p->tab==top_symtab_stack())
+    			O"  pushl %%eax\n");
+    		O "  leal %s, %%eax\n", p->rname);
+    		O " \rpushl %%eax\n");
+    		break;
+    	default:
+    		parse_error("Need lvalue.","");
+    		break;
+	}
 
-	if ((p->type->type_id != TYPE_ARRAY) 
-			&& (p->type->type_id != TYPE_RECORD)
-			&& (p->type->type_id != srctype))
-    {
-        parse_error("operand type do not match operator.","");
-        return;
-    }
-
-    if((p->type->type_id == TYPE_ARRAY) 
-		&& (srctype != p->type->first->type->type_id))
-    {
-        parse_error("operand type do not match operator.","");
-        return;
-    }
-
-    if((p->type->type_id == TYPE_RECORD)) 
-    {
-        parse_error("operand type do not match operator.","");
-        return;
-    }
-
-    switch(p->defn)
-    {
-    case DEF_VARPARA:
-        fprintf(codfp,"\t\tpushl\t%%eax\n");
-        fprintf(codfp,"\t\tmovl\t%s, %%eax\n",
-                p->rname);
-        break;
-    case DEF_FIELD:
-        fprintf(codfp,"\t\tpopl\t%%ebx\n");
-        if(p->type->type_id == TYPE_INTEGER
-                ||p->type->type_id == TYPE_BOOLEAN)
-            fprintf(codfp,"\t\tmovl\t%%eax, (%%ebx)\n");
-        else if (p->type->type_id == TYPE_CHAR)
-            fprintf(codfp,"\t\tmovb\t%%al, (%%ebx)\n");
-        return;
-    case DEF_VAR:
-    case DEF_CONST:
-    case DEF_ELEMENT:
-        if(p->type->type_id == TYPE_ARRAY)
-        {
-            fprintf(codfp,"\t\tpushl\t%%eax\n");
-            break;
-        }
-        if(p->tab->level == 0
-                ||p->type->type_id == TYPE_REAL)
-            break;
-        else if( p->tab->level
-                 && p->tab == top_symtab_stack())
-        {
-            fprintf(codfp,"\t\tpushl\t%%eax\n");
-            fprintf(codfp,"\t\tleal\t%s, %%eax\n",
-                    p->rname);
-            fprintf(codfp,"\t\tpushl\t%%eax\n");
-            break;
-        }
-        else
-        {
-            ptab = top_symtab_stack();
-            n = ptab->level - p->tab->level;
-            fprintf(codfp,"\t\tpushl\t%%eax\n");
-            fprintf(codfp,"\t\tmovl\t%%ebp, %%ebx\n");
-            for(i =0;i<n;i++)
-                fprintf(codfp,"\t\tmovl\t%s,%%ebp\n",
-                        LABEL_SLINK);
-            fprintf(codfp,"\t\tleal\t%s, %%eax\n",
-                    p->rname);
-            fprintf(codfp,"\t\tmovl\t%%ebx, %%ebp\n");
-            fprintf(codfp,"\t\tpushl\t%%eax\n");
-        }
-        break;
-    case DEF_VALPARA:
-        if(p->tab->level==0
-                || p->tab==top_symtab_stack())
-            fprintf(codfp,"\t\tpushl\t%%eax\n");
-        fprintf(codfp,"\t\tleal\t%s, %%eax\n",
-                p->rname);
-        fprintf(codfp,"\t\rpushl\t%%eax\n");
-        break;
-    default:
-        parse_error("lvalue expected.","");
-        break;
-    }
-
-    switch(p->type->type_id)
-    {
-    case TYPE_CHAR:
-        if(p->tab->level)
-        {
-            fprintf(codfp,"\t\tpopl\t%%bx\n");
-            fprintf(codfp,"\t\tpopl\t%%ax\n");
-            fprintf(codfp,"\tmovb\t%%al, (%%bx)\n");
-        }
-        else
-            fprintf(codfp,"\t\tmovb\t%%al,%s\n",
-                    p->rname);
-
-        break;
-    case TYPE_INTEGER:
-    case TYPE_BOOLEAN:
-        if (p->tab->level)
-        {
-            fprintf(codfp, "\t\tpopl\t%%ebx\n");
-            fprintf(codfp, "\t\tpopl\t%%eax\n");
-            fprintf(codfp, "\t\tmovl\t%%eax, (%%ebx)\n");
-        }
-        else
-            fprintf(codfp, "\t\tmovl\t%%eax, %s\n",p->rname);
-        break;
-
-    case TYPE_STRING:
-        fprintf(codfp, "\t\tmovl\t$%d, %%cx\n",
-                strlen(p->v.s));
-        fprintf(codfp, "\t\tpopl\tesi\n");
-        fprintf(codfp, "\t\tpopl\tedi\n");
-        fprintf(codfp, "\t\tmovl\t%%ds, %%eax\n");
-        fprintf(codfp, "\t\tmovl\t%%eax, %%es\n");
-        fprintf(codfp, "\t\tcld\n");
-        fprintf(codfp, "\t\trep\tmovsb\n");
-        break;
-    case TYPE_REAL:
-        break;
-    case TYPE_ARRAY:
-        if (p->type_link->last->type->type_id == TYPE_INTEGER
-                ||p->type_link->last->type->type_id == TYPE_BOOLEAN )
-        {
-			/*
-            fprintf(codfp, "\t\tpop\tax\n");
-            fprintf(codfp, "\t\tpop\tbx\n");
-            fprintf(codfp, "\t\tmov\tword ptr [bx],ax\n");
-			*/
-            fprintf(codfp, "\t\tpopl\t%%eax\n");
-            fprintf(codfp, "\t\tpopl\t%%ebx\n");
-            fprintf(codfp, "\t\tmovl\t%%eax, (%%ebx)\n");
-
-        }
-        else if (p->type_link->last->type->type_id ==
-                 TYPE_CHAR)
-        {
-			/*
-            fprintf(codfp, "\t\tpop\tax\n");
-            fprintf(codfp, "\t\tpop\tbx\n");
-            fprintf(codfp, "\t\tmov\tbyte ptr [bx],al\n");
-			*/
-            fprintf(codfp, "\t\tpopl\t%%eax\n");
-            fprintf(codfp, "\t\tpopl\t%%ebx\n");
-            fprintf(codfp, "\t\tmovb\t%%al, (%%ebx)\n");
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-static void do_linux_cond_jump(int true_or_false, Symbol label)
-{
-    fprintf(codfp, "\t\tcmpl\t$1, %%eax\n");
-
-    if (true_or_false)
-        fprintf(codfp, "\t\tjge\t%s\n", label->name);
-    else
-        fprintf(codfp, "\t\tjl\t%s\n", label->name);
-}
-
-static void do_linux_jump(Symbol label)
-{
-    fprintf(codfp, "\t\tjmp %s\n", label->name);
-}
-
-static void do_linux_label(Symbol label)
-{
-    fprintf(codfp, "%s:\n", label->name);
-}
-
-static void do_linux_incr(Symbol sym)
-{
-    switch (sym->type->type_id)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tincl %s\n", sym->rname);
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "\t\tincb %s\n", sym->rname);
-        break;
-    default:
-        parse_error("incr instruction only support char, boolean and int.", "");
-        break;
-    }
-}
-
-static void do_linux_decr(Symbol sym)
-{
-    switch (sym->type->type_id)
-    {
-    case TYPE_BOOLEAN:
-    case TYPE_INTEGER:
-        fprintf(codfp, "decl %s\n", sym->rname);
-        break;
-    case TYPE_CHAR:
-        fprintf(codfp, "decb %s\n", sym->rname);
-        break;
-    default:
-        parse_error("incr instruction only support char, boolean and int.", "");
-        break;
-    }
-}
-
-static int jump_index = 0;
-
-static void do_linux_expression(Type type, int op)
-{
-
-    if (type == NULL)
-    {
-        return;
-    }
-
-    if (type->type_id == TYPE_INTEGER
-            || type->type_id == TYPE_BOOLEAN)
-    {
-        fprintf(codfp, "\t\tpopl\t%%edx\n");
-        fprintf(codfp, "\t\tcmpl\t%%eax, %%edx\n");
-    }
-    else if(type->type_id == TYPE_CHAR)
-    {
-        fprintf(codfp, "\t\tpopl\t%%edx\n");
-        fprintf(codfp, "\t\tcmpb\t%%al, %%dl\n");
-    }
-    else if (type->type_id == TYPE_STRING)
-    {
-        fprintf(codfp,"\t\tpopl\t%%edi\n");
-        fprintf(codfp, "\t\tpopl\t%%esi\n");
-        fprintf(codfp, "\t\tmovl\t%%ds, %%eax\n");
-        fprintf(codfp, "\t\tmovl\t%%eax, %%es\n");
-        fprintf(codfp, "\t\tcld\n");
-        fprintf(codfp, "\t\tmovl\t$%d, %%ecx\n",strlen(p->v.s));
-        fprintf(codfp, "\t\trepe\t\tcmpsb\n");
-    }
-    else
-    {
-        parse_error("standard type expected.", "");
-        return;
-    }
-
-    fprintf(codfp, "\t\tmovl\t$1, %%eax\n");
-
-    switch(generic(op))
-    {
-    case GE:
-        fprintf(codfp, "\t\tjge\tj_%03d\n",
-                new_index(jump));
-        break;
-    case LE:
-        fprintf(codfp, "\t\tjle\tj_%03d\n",
-                new_index(jump));
-        break;
-    case GT:
-        fprintf(codfp, "\t\tjg\tj_%03d\n",
-                new_index(jump));
-        break;
-    case LT:
-        fprintf(codfp, "\t\tjl\tj_%03d\n",
-                new_index(jump));
-        break;
-    case EQ:
-        fprintf(codfp, "\t\tje\tj_%03d\n",
-                new_index(jump));
-        break;
-    case NE:
-        fprintf(codfp, "\t\tjne\tj_%03d\n",
-                new_index(jump));
-        break;
-    }
-
-    fprintf(codfp, "\t\txorl\t%%eax, %%eax\n");
-    fprintf(codfp, "j_%03d:\n", jump_index);
-}
-
-static void do_linux_negate(symbol *p)
-{
-    if (!p)
-        return;
-    if (p->defn != DEF_VAR
-            && p->defn != DEF_VALPARA
-            && p->defn != DEF_VARPARA
-            && p->defn != DEF_CONST)
-    {
-        parse_error("variable required.", "");
-        return;
-    }
-    switch(p->type->type_id)
-    {
-    case TYPE_INTEGER:
-        fprintf(codfp, "\t\tnegl\t%%eax\n");
-        break;
-    default:
-        parse_error("operand type do not match operator.", "");
-        break;
-    }
-}
-
-static void do_linux_expr(Type type, int op)
-{
-    if (type == NULL)
-    {
-        return;
-    }
-
-    switch(generic(op))
-    {
-    case ADD:
-        if (type->type_id == TYPE_REAL)
-        {}
-        else if (type->type_id == TYPE_INTEGER)
-        {
-            fprintf(codfp,"\t\tpopl\t%%edx\n");
-            fprintf(codfp, "\t\taddl\t%%edx, %%eax\n");
-        }
-        else
-            parse_error("integer or real type expected.","");
-        break;
-    case SUB:
-        if (type->type_id == TYPE_REAL)
-        {}
-        else if (type->type_id==TYPE_INTEGER)
-        {
-            fprintf(codfp, "\t\tpopl\t%%edx\n");
-            fprintf(codfp, "\t\tsubl\t%%eax, %%edx\n");
-            fprintf(codfp, "\t\tmovl\t%%edx, %%eax\n");
-        }
-        else
-            parse_error("integer or real type expected.", "");
-        break;
-    case OR:
-        if (type->type_id == TYPE_BOOLEAN)
-        {
-            fprintf(codfp, "\t\tpopl\t%%edx\n");
-            fprintf(codfp, "\t\torl\t%%edx, %%eax\n");
-        }
-        else
-            parse_error("boolean type expected.", "");
-        break;
-    default:
-        break;
-    }
-}
-
-static void do_linux_term(Type type, int op)
-{
-    if (type == NULL)
-    {
-        return;
-    }
-    switch(generic(op))
-    {
-    case MUL:
-        if (type->type_id == TYPE_INTEGER)
-        {
-            fprintf(codfp, "\t\tpopl\t%%edx\n");
-            fprintf(codfp, "\t\timul\t%%edx\n");
-        }
-        else if (type->type_id == TYPE_REAL)
-        {}
-        else
-            parse_error("integer or real type expected.", "");
-        break;
-    case DIV:
-        if (type->type_id == TYPE_INTEGER)
-        {
-            fprintf(codfp,"\t\tmovl\t%%eax, %%ecx\n");
-            fprintf(codfp, "\t\tpopl\t%%eax\n");
-            fprintf(codfp, "\t\tsubl\t%%edx,%%edx\n");
-            fprintf(codfp, "\t\tidiv\t%%ecx\n");
-        }
-        else
-            parse_error("integer type expected.", "");
-        break;
-    case MOD:
-        if (type->type_id == TYPE_INTEGER)
-        {
-            fprintf(codfp, "\t\tmovl\t%%eax, %%ecx\n");
-            fprintf(codfp, "\t\tpopl\t%%eax\n");
-            fprintf(codfp, "\t\tsubl\t%%edx,%%edx\n");
-            fprintf(codfp, "\t\tidiv\t%%ecx\n");
-            fprintf(codfp, "\t\tmovl\t%%edx, %%eax\n");
-        }
-        else
-            parse_error("integer type expected.","");
-        break;
-    case AND:
-        if (type->type_id != TYPE_BOOLEAN)
-            parse_error("boolean type expected.","");
-        else
-        {
-            fprintf(codfp, "\t\tpopl\t%%edx\n");
-            fprintf(codfp, "\t\tandl\t%%edx, %%eax\n");
-        }
-        break;
-    default:
-        break;
-    }
-}
-
-static void do_linux_factor(symbol *p)
-{
-    symtab *ptab;
-    int i;
-    int n;
-
-    if (!p)
-        return;
-
-    if (p->type->type_id == TYPE_ARRAY)
-    {
-        parse_error("array element expected","");
-        return;
-    }
-
-    if (p->defn == DEF_CONST || p->defn == DEF_ELEMENT)
-    {
-        switch(p->type->type_id)
-        {
-        case TYPE_BOOLEAN:
-            fprintf(codfp, "\t\tmovl\t$%d, %%eax\n",p->v.b);
-            break;
-        case TYPE_INTEGER:
-            if (p->defn == DEF_ELEMENT)
-			{
-                fprintf(codfp, "\t\tmovl\t$%d, %%eax\n",
-                        p->v.i);
-			}
-            else
-			{
-				short tvi = (short)p->v.i;
-
-                fprintf(codfp, "\t\tmovl\t$%d, %%eax\n",
-                        tvi);
-			}
-            break;
+	switch(p->type->type_id){
+    	case TYPE_INTEGER:
+    	case TYPE_BOOLEAN:
+    		if (p->tab->level){
+    			O "  popl %%ebx\n");
+    			O "  popl %%eax\n");
+    			O "  movl %%eax, (%%ebx)\n");
+    		}else
+    			O "  movl %%eax, %s\n", p->rname);
+    		break;
         case TYPE_CHAR:
-            fprintf(codfp, "\t\tmovb\t$%d,%%al\n",p->v.c);
+            if(p->tab->level){
+                O "  popl %%bx\n");
+                O "  popl %%ax\n");
+                O " movb %%al, (%%bx)\n");
+            }else
+                O"  movb %%al,%s\n", p->rname);
             break;
-        case TYPE_REAL:
-            break;
-        case TYPE_STRING:
-            fprintf(codfp, "\t\tmovl\t%s, %%eax\n",p->rname);
-            break;
-        default:
-            break;
-        }
-    }
-    else if (p->defn == DEF_VARPARA)
-    {
-        fprintf(codfp, "\t\tmovl\t%s, %%ebx\n",
-                p->rname);
-        fprintf(codfp, "\t\tmovl\t(%%ebx), %%eax\n");
-    }
-    else if (p->defn == DEF_VAR
-             ||p->defn == DEF_VALPARA)
+    	case TYPE_STRING:
+    		O "  movl $%d, %%cx\n", strlen(p->v.s));
+    		O "  popl esi\n");
+    		O "  popl edi\n");
+    		O "  movl %%ds, %%eax\n");
+    		O "  movl %%eax, %%es\n");
+    		O "  cld\n");
+    		O "  rep movsb\n");
+    		break;
+    	case TYPE_REAL:
+    		break;
+    	case TYPE_ARRAY:
+    		if (p->type_link->last->type->type_id == TYPE_INTEGER ||
+                p->type_link->last->type->type_id == TYPE_BOOLEAN ){
+    			O "  popl %%eax\n");
+    			O "  popl %%ebx\n");
+    			O "  movl %%eax, (%%ebx)\n");
 
-    {
-        if (p->tab == top_symtab_stack()
-                || p->tab->level == 0)
-        {
-            switch(p->type->type_id)
-            {
-            case TYPE_CHAR:
-                fprintf(codfp, "\t\tsubl\t%%eax,%%eax\n");
-                fprintf(codfp, "\t\tmovb\t%s, %%al\n",p->rname);
-                break;
-            case TYPE_BOOLEAN:
-            case TYPE_INTEGER:
-                fprintf(codfp, "\t\tmovl\t%s, %%eax\n",p->rname);
-                break;
-            case TYPE_REAL:
-                break;
-            }
-        }
-        if (p->defn == DEF_VAR)
-        {
-            ptab = top_symtab_stack();
-            n = ptab->level - p->tab->level;
-            if (n <= 0)
-                return;
-            fprintf(codfp, "\t\tmovl\t%%ebx,%%ebp\n");
-            for(i = 0; i<n; i++)
-                fprintf(codfp, "\t\tmovl\t%s, %%ebp\n",
-                        LABEL_SLINK);
-            switch(p->type->type_id)
-            {
-            case TYPE_INTEGER:
-            case TYPE_BOOLEAN:
-                fprintf(codfp, "\t\tmovl\t%s, %%eax\n",p->rname);
-                break;
-            case TYPE_CHAR:
-                fprintf(codfp, "\t\tmovb\t%s, %%al\n",p->rname);
-                break;
-            default:
-                break;
-            }
-            fprintf(codfp,"\t\tmovl\t%%ebx, %%ebp\n");
-        }
-    }
+    		}else if (p->type_link->last->type->type_id == TYPE_CHAR){
+    			O "  popl %%eax\n");
+    			O "  popl %%ebx\n");
+    			O "  movb %%al, (%%ebx)\n");
+    		}
+    		break;
+    	default:
+    		break;
+	}
 }
 
-static void do_linux_not_factor(symbol *p)
-{
-    if (!p)
-        return;
-    if (p->type->type_id!= TYPE_BOOLEAN)
-        parse_error("Boolean type expected. ","");
-
-    do_linux_factor(p);
-
-    fprintf(codfp, "\t\tandl\t$1, %%eax\n");
-    fprintf(codfp, "\t\txorl\t$1, %%eax\n");
+static void do_linux_cond_jump(int true_or_false, Symbol label){
+	O "  cmpl $1, %%eax\n");
+	if (true_or_false)
+		O "  jge %s\n", label->name);
+	else
+		O "  jl %s\n", label->name);
 }
 
-static void do_linux_array_factor(symbol *p)
-{
-    if (p->type_link->first->v.i >= 0)
-        fprintf(codfp, "\t\tsubl\t$%d, %%eax\n",
-                p->type_link->first->v.i);
-    else
-        fprintf(codfp, "\t\tsubl\t$-%d, %%eax\n",
-                -(p->type_link->first->v.i));
-    fprintf(codfp, "\t\tmovl\t$%d, %%ecx\n",
-            get_symbol_size(p->type_link->last));
-    fprintf(codfp, "\t\timul\t%%ecx\n");
-    fprintf(codfp, "\t\tpopl\t%%edx\n");
-    if (p->tab->level)
-        fprintf(codfp, "\t\tsubl\t%%eax, %%edx\n");
-    else
-        fprintf(codfp, "\t\taddl\t%%eax, %%edx\n");
-
-    fprintf(codfp, "\t\tpushl\t%%edx\n");
+static void do_linux_jump(Symbol label){
+	O "  jmp %s\n", label->name);
 }
 
-static void do_linux_record_factor(symbol *var, symbol *p)
-{
-    if (!var || !p || p->defn != DEF_FIELD)
-        return;
-    fprintf(codfp, "\t\tpopl\t%%eax\n");
-    fprintf(codfp, "\t\tmovl\t$%d, %%edx\n",p->offset);
-    if (var->tab->level)
-        fprintf(codfp, "\t\tsubl\t%%edx, %%eax\n");
-    else
-        fprintf(codfp, "\t\taddl\t%%edx, %%eax\n");
-    fprintf(codfp, "\t\tpushl\t%%eax\n");
+static void do_linux_label(Symbol label){
+	O "%s:\n", label->name);
 }
 
-static int programbegin(Env *global)
-{
-    emit_linux_program_prologue(global->u.program.tab);
-    return 0;
+static void do_linux_incr(Symbol sym){
+	switch (sym->type->type_id){
+    	case TYPE_BOOLEAN:
+    	case TYPE_INTEGER:
+    		O "  incl %s\n", sym->rname);
+    		break;
+    	case TYPE_CHAR:
+    		O "  incb %s\n", sym->rname);
+    		break;
+    	default:
+    		TYPEERR
+    		break;
+	}
 }
 
-static int programend(Env *global)
-{
-    emit_linux_program_epilogue(global->u.program.tab);
-    return 0;
+static void do_linux_decr(Symbol sym){
+	switch (sym->type->type_id){
+    	case TYPE_BOOLEAN:
+    	case TYPE_INTEGER:
+    		O "decl %s\n", sym->rname);
+    		break;
+    	case TYPE_CHAR:
+    		O "decb %s\n", sym->rname);
+    		break;
+    	default:
+    		TYPEERR
+    		break;
+	}
 }
 
-static int mainbegin(Env *main)
-{
-    emit_linux_main_prologue(main->u.main.tab);
-    return 0;
+static void do_linux_expression(Type type, int op){
+	if (type == NULL){
+		return;
+	}
+	if (type->type_id == TYPE_INTEGER || type->type_id == TYPE_BOOLEAN){
+		O "  popl %%edx\n");
+		O "  cmpl %%eax, %%edx\n");
+	}else if(type->type_id == TYPE_CHAR){
+		O "  popl %%edx\n");
+		O "  cmpb %%al, %%dl\n");
+	}else if (type->type_id == TYPE_STRING){
+		O"  popl %%edi\n");
+		O "  popl %%esi\n");
+		O "  movl %%ds, %%eax\n");
+		O "  movl %%eax, %%es\n");
+		O "  cld\n");
+		O "  movl $%d, %%ecx\n",strlen(p->v.s));
+		O "  repe  cmpsb\n");
+	}else{
+		TYPEERR
+		return;
+	}
+	O "  movl $1, %%eax\n");
+	switch(generic(op)){
+    	case GE:
+    		O "  jge j_%03d\n", new_index(jump));
+    		break;
+    	case LE:
+    		O "  jle j_%03d\n", new_index(jump));
+    		break;
+    	case GT:
+    		O "  jg j_%03d\n", new_index(jump));
+    		break;
+    	case LT:
+    		O "  jl j_%03d\n", new_index(jump));
+    		break;
+    	case EQ:
+    		O "  je j_%03d\n", new_index(jump));
+    		break;
+    	case NE:
+    		O "  jne j_%03d\n", new_index(jump));
+    		break;
+	}
+	O "  xorl %%eax, %%eax\n");
+	O "j_%03d:\n", jump_index);
 }
 
-static int mainend(Env *main)
-{
-    emit_linux_main_epilogue(main->u.main.tab);
-    return 0;
+static void do_linux_negate(symbol *p){
+	if (!p)
+		return;
+	if (p->defn != DEF_VAR && p->defn != DEF_VALPARA && 
+        p->defn != DEF_VARPARA && p->defn != DEF_CONST){
+		parse_error("Need Variable.", "");
+		return;
+	}
+	switch(p->type->type_id){
+    	case TYPE_INTEGER:
+    		O "  negl %%eax\n");
+    		break;
+    	default:
+    		TYPEERR
+    		break;
+	}
 }
 
-static int globalvariable(Symbol symbol)
-{
-    return 0;
+static void do_linux_expr(Type type, int op){
+	if (type == NULL){
+		return;
+	}
+	switch(generic(op)){
+    	case ADD:
+    		if (type->type_id == TYPE_INTEGER){
+    			O"  popl %%edx\n");
+    			O "  addl %%edx, %%eax\n");
+    		}else if (type->type_id == TYPE_REAL){} else
+    			TYPEERR
+    		break;
+    	case SUB:
+    		if (type->type_id==TYPE_INTEGER){
+    			O "  popl %%edx\n");
+    			O "  subl %%eax, %%edx\n");
+    			O "  movl %%edx, %%eax\n");
+    		}else if  (type->type_id == TYPE_REAL){} else
+    			TYPEERR
+    		break;
+    	case OR:
+    		if (type->type_id == TYPE_BOOLEAN){
+    			O "  popl %%edx\n");
+    			O "  orl %%edx, %%eax\n");
+    		}
+    		else
+    			TYPEERR
+    		break;
+    	default:
+    		break;
+	}
 }
 
-static int localvariable(Symbol symbol)
-{
-    return 0;
+static void do_linux_term(Type type, int op){
+	if (type == NULL)
+		return;
+	switch(generic(op)){
+    	case MUL:
+    		if (type->type_id == TYPE_INTEGER){
+    			O "  popl %%edx\n");
+    			O "  imul %%edx\n");
+    		}else if (type->type_id == TYPE_REAL){}else
+    			TYPEERR
+    		break;
+    	case DIV:
+    		if (type->type_id == TYPE_INTEGER){
+    			O"  movl %%eax, %%ecx\n");
+    			O "  popl %%eax\n");
+    			O "  subl %%edx,%%edx\n");
+    			O "  idiv %%ecx\n");
+    		}else
+    			TYPEERR
+    		break;
+    	case MOD:
+    		if (type->type_id == TYPE_INTEGER){
+    			O "  movl %%eax, %%ecx\n");
+    			O "  popl %%eax\n");
+    			O "  subl %%edx,%%edx\n");
+    			O "  idiv %%ecx\n");
+    			O "  movl %%edx, %%eax\n");
+    		}else
+    			TYPEERR
+    		break;
+    	case AND:
+    		if (type->type_id != TYPE_BOOLEAN)
+    			parse_error("boolean type expected.","");
+    		else{
+    			O "  popl %%edx\n");
+    			O "  andl %%edx, %%eax\n");
+    		}
+    		break;
+    	default:
+    		break;
+	}
 }
 
-static int deflabel(Symbol symbol)
-{
-    return 0;
-}
-
-static int defaddress(Symbol p, Symbol q, long n)
-{
-    return 0;
-}
-
-static int defconst(int type, Value value)
-{
-    return 0;
-}
-
-static int allocspace(int n)
-{
-    return n;
-}
-
-static int marknode(Node rootnode)
-{
-    return 0;
-}
-
-static int gen_linux_code(Node rootnode)
-{
-    int ret = 0;
-    Node pnode;
-
-    gen_level++;
-
-    switch (generic(rootnode->op))
-    {
-    case ARG:
-        if (!rootnode->kids[0])
-        {
-            return ERROR_SUCCESS;
-        }
-
-        gen_linux_code(rootnode->kids[0]);
-        do_linux_first_arg(rootnode->kids[0]->type->type_id);
-
-        pnode = rootnode->kids[1];
-        while(pnode)
-        {
-            if (!pnode->kids[0])
-                break;
-
-            gen_linux_code(pnode->kids[0]);
-            do_linux_args(pnode->kids[0]->type->type_id);
-
-            pnode = pnode->kids[1];
-        }
-
-        gen_level --;
-        return ERROR_SUCCESS;
-    case AND:
-    case OR:
-    case EQ:
-    case NE:
-    case GT:
-    case GE:
-    case LE:
-    case LT:
-        if (rootnode->kids[0])
-        {
-            ret = gen_linux_code(rootnode->kids[0]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        emit_linux_dos_push_op(rootnode->kids[0]->type);
-        if (rootnode->kids[1])
-        {
-            ret = gen_linux_code(rootnode->kids[1]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        break;
-    case BOR:
-    case BAND:
-    case BXOR:
-    case ADD:
-    case SUB:
-        if (rootnode->kids[0])
-        {
-            ret = gen_linux_code(rootnode->kids[0]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        emit_linux_dos_push_op(rootnode->kids[0]->type);
-        if (rootnode->kids[1])
-        {
-            ret = gen_linux_code(rootnode->kids[1]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        break;
-    case RSH:
-    case LSH:
-    case DIV:
-    case MUL:
-    case MOD:
-        if (rootnode->kids[0])
-        {
-            ret = gen_linux_code(rootnode->kids[0]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        emit_linux_dos_push_op(rootnode->kids[0]->type);
-        if (rootnode->kids[1])
-        {
-            ret = gen_linux_code(rootnode->kids[1]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        break;
-    case ARRAY:
-        emit_linux_load_address(rootnode->syms[0]);
-        emit_linux_dos_push_op(find_type_by_id(TYPE_INTEGER));
-        if (rootnode->kids[0])
-        {
-            ret = gen_linux_code(rootnode->kids[0]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        break;
-        /*
-        case ADDRG:
-        if (rootnode->kids[0] != NULL)
-        {
-        	if (generic(rootnode->kids[0]->op) == ARRAY)
-        	{
-        		emit_linux_load_address(rootnode->kids[0]->syms[0]);
-        		emit_linux_dos_push_op(TYPE_INTEGER);
-        	}
-        	else if (generic(rootnode->kids[0]->op) == FIELD)
-        	{
-        		emit_linux_load_address(rootnode->syms[0]);
-        		emit_linux_dos_push_op(TYPE_INTEGER);
-        		do_linux_record_factor(rootnode->syms[0], rootnode->syms[1]);
-        	}
-        }
-        break;
-        */
-    case SYS:
-        /* for sys call, all childnodes will be processed in next switch. */
-        break;
-    case CALL:
-        push_call_stack(rootnode->symtab);
-
-    default:
-        if (rootnode->kids[0])
-        {
-            ret = gen_linux_code(rootnode->kids[0]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-
-        if (rootnode->kids[1])
-        {
-            ret = gen_linux_code(rootnode->kids[1]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-
-        if (rootnode->kids[2])
-        {
-            ret = gen_linux_code(rootnode->kids[2]);
-            if (ret < 0)
-            {
-                gen_level --;
-                return ret;
-            }
-        }
-        break;
-    }
-
-    switch (generic(rootnode->op))
-    {
-    case ARRAY:
-        do_linux_array_factor(rootnode->syms[0]);
-        break;
-    case CNST:
-        do_linux_factor(rootnode->syms[0]);
-        break;
-    case FIELD:
-        emit_linux_load_address(rootnode->syms[0]);
-        emit_linux_dos_push_op(find_type_by_id(TYPE_INTEGER));
-        do_linux_record_factor(rootnode->syms[0], rootnode->syms[1]);
-        /* emit_linux_load_field(rootnode->syms[1]); */
-        break;
-    case HEADER:
-        emit_linux_routine_prologue(rootnode->symtab);
-        break;
-    case TAIL:
-        emit_linux_routine_epilogue(rootnode->symtab);
-        break;
-    case NOT:
-        do_linux_not_factor(rootnode->kids[0]->syms[0]);
-        break;
-    case NEG:
-        do_linux_negate(rootnode->kids[0]->syms[0]);
-        break;
-    case ASGN:
-        {
-            p = rootnode->kids[0]->syms[0];
-            if (!p)
-                assert(0);
-
-            if (p->defn == DEF_FUNCT)
-            {
-                ptab = find_routine(p->name);
-
-                if(ptab)
-                    do_linux_function_assign(ptab, rootnode->kids[0]->type->type_id);
-                else
-                {
-                    parse_error("Undeclared identifier.", p->name);
-                    gen_level --;
-                    return ERROR_UNDECLARE;
-                }
-            }
-            else
-            {
-                do_linux_assign(p, rootnode->kids[0]->type->type_id);
-            }
-        }
-        break;
-    case CALL:
-        do_linux_procedure_call(rootnode->symtab);
-        pop_call_stack();
-        break;
-    case SYS:
-
-        emit_linux_address = 1;		/* signal the ADDRG to generate address. */
-        if ((rootnode->kids[0] == NULL) ||
-                (rootnode->kids[0]->kids[0] == NULL) ||
-                (rootnode->kids[0]->kids[1] == NULL))
-        {
-            /* do system call without args, or with only one arg. */
-            if (rootnode->kids[0])
-			{
-                if (rootnode->kids[0]->kids[0])
-                    gen_linux_code(rootnode->kids[0]->kids[0]);
-                else
-                    gen_linux_code(rootnode->kids[0]);
+static void do_linux_factor(symbol *p){
+	symtab *ptab;
+	int i, n;
+	if (!p)
+		return;
+	if (p->type->type_id == TYPE_ARRAY){
+		parse_error("Need Array Element.","");
+		return;
+	}
+	if (p->defn == DEF_CONST || p->defn == DEF_ELEMENT){
+		switch(p->type->type_id){
+    		case TYPE_BOOLEAN:
+    			O "  movl $%d, %%eax\n",p->v.b);
+    			break;
+    		case TYPE_INTEGER:
+    			if (p->defn == DEF_ELEMENT){
+    				O "  movl $%d, %%eax\n",
+    						p->v.i);
+    			}else{
+    				short tt = (short)p->v.i;
+    				O "  movl $%d, %%eax\n", tt);
+    			}
+    			break;
+    		case TYPE_CHAR:
+    			O "  movb $%d,%%al\n",p->v.c);
+    			break;
+    		case TYPE_STRING:
+    			O "  movl %s, %%eax\n",p->rname);
+    			break;
+    		default:
+    			break;
+		}
+	}
+	else if (p->defn == DEF_VARPARA){
+		O "  movl %s, %%ebx\n", p->rname);
+		O "  movl (%%ebx), %%eax\n");
+	}
+	else if (p->defn == DEF_VAR ||p->defn == DEF_VALPARA){
+		if (p->tab == top_symtab_stack() || p->tab->level == 0){
+			switch(p->type->type_id){
+    			case TYPE_BOOLEAN:
+    			case TYPE_INTEGER:
+    				O "  movl %s, %%eax\n",p->rname);
+    				break;
+    			case TYPE_CHAR:
+                    O "  subl %%eax,%%eax\n");
+                    O "  movb %s, %%al\n",p->rname);
+                    break;
+                case TYPE_REAL:
+    				break;
 			}
-            do_linux_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->type->type_id);
-        }
-        else
-        {
-#if DEBUG & SYSTEM_CALL_DEBUG
-            {
-                Symtab systab = find_sys_routine(rootnode->u.sys_id);
-                printf("do system call %s with more than one arg.\n", systab->name);
-            }
-#endif
-            switch (rootnode->u.sys_id)
-            {
-            case pREAD:
-            case pREADLN:
-            case pWRITE:
-            case pWRITELN:
-            default:
-                gen_linux_code(rootnode->kids[0]->kids[0]);
-                do_linux_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->kids[0]->type->type_id);
-
-                pnode = rootnode->kids[0]->kids[1];
-                while(pnode)
-                {
-                    if (!pnode->kids[0])
-                        break;
-
-                    gen_linux_code(pnode->kids[0]);
-                    do_linux_sys_routine(rootnode->u.sys_id, pnode->kids[0]->type->type_id);
-                    pnode = pnode->kids[1];
-                }
-
-                break;
-            }
-        }
-        emit_linux_address = 0;		/* clear signal */
-        break;
-    case COND:
-        do_linux_cond_jump(rootnode->u.cond.true_or_false, rootnode->u.cond.label);
-        break;
-    case JUMP:
-        do_linux_jump(rootnode->syms[0]);
-        break;
-    case LABEL:
-        do_linux_label(rootnode->syms[0]);
-        break;
-    case INCR:
-        /*
-         * variable is in first child of INCR node.
-         * generally an ADDRG node.
-         */
-        assert(rootnode->kids[0]->syms[0]);
-        do_linux_incr(rootnode->kids[0]->syms[0]);
-        break;
-    case DECR:
-        /*
-         * variable is in first child of DECR node.
-         * generally an ADDRG node.
-         */
-        assert(rootnode->kids[0]->syms[0]);
-        do_linux_decr(rootnode->kids[0]->syms[0]);
-        break;
-    case LOAD:
-        if (rootnode->kids[0] == NULL)
-        {
-            /* simple const or id. */
-            do_linux_factor(rootnode->syms[0]);
-        }
-        else if (generic(rootnode->kids[0]->op) == ARRAY)
-        {
-            emit_linux_load_value(rootnode->kids[0]->syms[0]);
-        }
-        else
-        {
-            emit_linux_load_field(rootnode->kids[0]->syms[1]);
-        }
-        break;
-    case EQ:
-    case NE:
-    case GT:
-    case GE:
-    case LE:
-    case LT:
-        do_linux_expression(rootnode->kids[1]->type, rootnode->op);
-        break;
-    case ADD:
-    case SUB:
-    case OR:
-        do_linux_expr(rootnode->kids[1]->type, rootnode->op);
-        break;
-    case AND:
-    case RSH:
-    case LSH:
-    case BOR:
-    case BAND:
-    case BXOR:
-    case DIV:
-    case MUL:
-    case MOD:
-        /*
-        if (rootnode->kids[0])
-        {
-        	ret = gen_linux_code(rootnode->kids[0]);
-        	if (ret < 0) {
-        		gen_level --;
-        		return ret;
-        	}
-        }
-        */
-        do_linux_term(rootnode->kids[1]->type, rootnode->op);
-        break;
-    case BLOCKBEG:
-    case BLOCKEND:
-        break;
-    case ADDRG:
-        if (emit_linux_address)
-            emit_linux_load_address(rootnode->syms[0]);
-        break;
-    default:
-        assert(0);
-        break;
-
-    }
-
-    gen_level --;
-    return ret;
+		}
+		if (p->defn == DEF_VAR){
+			ptab = top_symtab_stack();
+			n = ptab->level - p->tab->level;
+			if (n <= 0)
+				return;
+			O "  movl %%ebx,%%ebp\n");
+			for(i = 0; i<n; i++)
+				O "  movl %s, %%ebp\n",	LABEL_SLINK);
+			switch(p->type->type_id){			
+    			case TYPE_BOOLEAN:
+                case TYPE_INTEGER:
+    				O "  movl %s, %%eax\n", p->rname);
+    				break;
+    			case TYPE_CHAR:
+    				O "  movb %s, %%al\n", p->rname);
+    				break;
+    			default:
+    				break;
+			}
+			O "  movl %%ebx, %%ebp\n");
+		}
+	}
 }
 
-
-static int functionprocess(List dags)
-{
-    List cp = dags->link;
-    int ret = 0;
-
-    for (; cp; cp = cp->link)
-    {
-        if ((ret = gen_linux_code((Node)(cp->x))) < 0)
-        {
-            parse_error("Error generating code.","");
-            return ret;
-        }
-    }
-    return ret;
+static void do_linux_not_factor(symbol *p){
+	if (!p)
+		return;
+	if (p->type->type_id!= TYPE_BOOLEAN)
+		TYPEERR
+	do_linux_factor(p);
+	O "  andl $1, %%eax\n");
+	O "  xorl $1, %%eax\n");
 }
 
-static int blockbegin(BlockContext *context)
-{
-    return 0;
+static void do_linux_array_factor(symbol *p){
+	if (p->type_link->first->v.i >= 0)
+		O "  subl $%d, %%eax\n", p->type_link->first->v.i);
+	else
+		O "  subl $-%d, %%eax\n", -(p->type_link->first->v.i));
+	O "  movl $%d, %%ecx\n", get_symbol_size(p->type_link->last));
+	O "  imul %%ecx\n");
+	O "  popl %%edx\n");
+	if (p->tab->level)
+		O "  subl %%eax, %%edx\n");
+	else
+		O "  addl %%eax, %%edx\n");
+	O "  pushl %%edx\n");
 }
 
-static int blockend(BlockContext *context)
-{
-    return 0;
+static void do_linux_record_factor(symbol *var, symbol *p){
+	if (!p || !var || p->defn != DEF_FIELD)
+		return;
+	O "  popl %%eax\n");
+	O "  movl $%d, %%edx\n",p->offset);
+	if (var->tab->level)
+		O "  subl %%edx, %%eax\n");
+	else
+		O "  addl %%edx, %%eax\n");
+	O "  pushl %%eax\n");
 }
 
-static void defexport(Symbol sym)
-{}
+static int programbegin(Env *global){
+	emit_linux_program_prologue(global->u.program.tab);
+	return 0;
+}
 
-static void defimport(Symbol sym)
-{}
+static int programend(Env *global){
+	emit_linux_program_epilogue(global->u.program.tab);
+	return 0;
+}
+
+static int mainbegin(Env *main){
+	emit_linux_main_prologue(main->u.main.tab);
+	return 0;
+}
+
+static int mainend(Env *main){
+	emit_linux_main_epilogue(main->u.main.tab);
+	return 0;
+}
+
+static int gen_linux_code(Node rootnode){
+	int ret = 0;
+	Node pnode;
+	gen_level++;
+	switch (generic(rootnode->op)){
+    	case ARG:
+    		if (!rootnode->kids[0]){
+    			return ERROR_SUCCESS;
+    		}
+    		gen_linux_code(rootnode->kids[0]);
+    		do_linux_first_arg(rootnode->kids[0]->type->type_id);
+    		pnode = rootnode->kids[1];
+    		while(pnode){
+    			if (!pnode->kids[0])
+    				break;
+    			gen_linux_code(pnode->kids[0]);
+    			do_linux_args(pnode->kids[0]->type->type_id);
+    			pnode = pnode->kids[1];
+    		}
+    		gen_level--;
+    		return ERROR_SUCCESS;
+    	case AND:
+    	case OR:
+    	case EQ:
+    	case NE:
+    	case GT:
+    	case GE:
+    	case LE:
+    	case LT:
+    		if (rootnode->kids[0]){
+    			ret = gen_linux_code(rootnode->kids[0]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		emit_linux_dos_push_op(rootnode->kids[0]->type);
+    		if (rootnode->kids[1]){
+    			ret = gen_linux_code(rootnode->kids[1]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		break;
+    	case BOR:
+    	case BAND:
+    	case BXOR:
+    	case ADD:
+    	case SUB:
+    		if (rootnode->kids[0]){
+    			ret = gen_linux_code(rootnode->kids[0]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		emit_linux_dos_push_op(rootnode->kids[0]->type);
+    		if (rootnode->kids[1]){
+    			ret = gen_linux_code(rootnode->kids[1]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		break;
+    	case RSH:
+    	case LSH:
+    	case DIV:
+    	case MUL:
+    	case MOD:
+    		if (rootnode->kids[0]){
+    			ret = gen_linux_code(rootnode->kids[0]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		emit_linux_dos_push_op(rootnode->kids[0]->type);
+    		if (rootnode->kids[1]){
+    			ret = gen_linux_code(rootnode->kids[1]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		break;
+    	case ARRAY:
+    		emit_linux_load_address(rootnode->syms[0]);
+    		emit_linux_dos_push_op(find_type_by_id(TYPE_INTEGER));
+    		if (rootnode->kids[0]){
+    			ret = gen_linux_code(rootnode->kids[0]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		break;
+    	case SYS:
+    		break;
+    	case CALL:
+    		push_call_stack(rootnode->symtab);
+    	default:
+    		if (rootnode->kids[0]){
+    			ret = gen_linux_code(rootnode->kids[0]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		if (rootnode->kids[1]){
+    			ret = gen_linux_code(rootnode->kids[1]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		if (rootnode->kids[2]){
+    			ret = gen_linux_code(rootnode->kids[2]);
+    			if (ret < 0){
+    				gen_level--;
+    				return ret;
+    			}
+    		}
+    		break;
+	}
+
+	switch (generic(rootnode->op)){
+        	case ARRAY:
+        		do_linux_array_factor(rootnode->syms[0]);
+        		break;
+        	case CNST:
+        		do_linux_factor(rootnode->syms[0]);
+        		break;
+        	case FIELD:
+        		emit_linux_load_address(rootnode->syms[0]);
+        		emit_linux_dos_push_op(find_type_by_id(TYPE_INTEGER));
+        		do_linux_record_factor(rootnode->syms[0], rootnode->syms[1]);
+        		break;
+        	case HEADER:
+        		emit_linux_routine_prologue(rootnode->symtab);
+        		break;
+        	case TAIL:
+        		emit_linux_routine_epilogue(rootnode->symtab);
+        		break;
+        	case NOT:
+        		do_linux_not_factor(rootnode->kids[0]->syms[0]);
+        		break;
+        	case NEG:
+        		do_linux_negate(rootnode->kids[0]->syms[0]);
+        		break;
+        	case ASGN:{
+        			p = rootnode->kids[0]->syms[0];
+        			if (!p)
+        				assert(0);
+        			if (p->defn == DEF_FUNCT){
+        				ptab = find_routine(p->name);
+        				if(ptab)
+        					do_linux_function_assign(ptab, rootnode->kids[0]->type->type_id);
+        				else{
+        					parse_error("Identifier Undeclared .", p->name);
+        					gen_level --;
+        					return ERROR_UNDECLARE;
+        				}
+        			}
+        			else
+        				do_linux_assign(p, rootnode->kids[0]->type->type_id);
+        		}
+        		break;
+        	case CALL:
+        		do_linux_procedure_call(rootnode->symtab);
+        		pop_call_stack();
+        		break;
+        	case SYS:
+        		emit_linux_address = 1;		
+        		if ((rootnode->kids[0] == NULL) || (rootnode->kids[0]->kids[0] == NULL) ||
+        			(rootnode->kids[0]->kids[1] == NULL)){
+        			if (rootnode->kids[0]){
+        				if (rootnode->kids[0]->kids[0])
+        					gen_linux_code(rootnode->kids[0]->kids[0]);
+        				else
+        					gen_linux_code(rootnode->kids[0]);
+        			}
+        			do_linux_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->type->type_id);
+        		}
+        		else{
+                    #if DEBUG & SYSTEM_CALL_DEBUG
+                    {
+        				Symtab systab = find_sys_routine(rootnode->u.sys_id);
+        				printf("do system call %s with more than one arg.\n", systab->name);
+        			}
+                    #endif
+        			gen_linux_code(rootnode->kids[0]->kids[0]);
+        			do_linux_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->kids[0]->type->type_id);
+        			pnode = rootnode->kids[0]->kids[1];
+        			while(pnode){
+        					if (!pnode->kids[0])
+        						break;
+        					gen_linux_code(pnode->kids[0]);
+        					do_linux_sys_routine(rootnode->u.sys_id, pnode->kids[0]->type->type_id);
+        					pnode = pnode->kids[1];
+        			}
+        		}
+        		emit_linux_address = 0;	
+        		break;
+        	case COND:
+        		do_linux_cond_jump(rootnode->u.cond.true_or_false, rootnode->u.cond.label);
+        		break;
+        	case JUMP:
+        		do_linux_jump(rootnode->syms[0]);
+        		break;
+        	case LABEL:
+        		do_linux_label(rootnode->syms[0]);
+        		break;
+        	case INCR:
+        		assert(rootnode->kids[0]->syms[0]);
+        		do_linux_incr(rootnode->kids[0]->syms[0]);
+        		break;
+        	case DECR:
+        		assert(rootnode->kids[0]->syms[0]);
+        		do_linux_decr(rootnode->kids[0]->syms[0]);
+        		break;
+        	case LOAD:
+        		if (rootnode->kids[0] == NULL){
+        			do_linux_factor(rootnode->syms[0]);
+        		}
+        		else if (generic(rootnode->kids[0]->op) == ARRAY){
+        			emit_linux_load_value(rootnode->kids[0]->syms[0]);
+        		}
+        		else
+        			emit_linux_load_field(rootnode->kids[0]->syms[1]);
+        		break;
+        	case EQ:
+        	case NE:
+        	case GT:
+        	case GE:
+        	case LE:
+        	case LT:
+        		do_linux_expression(rootnode->kids[1]->type, rootnode->op);
+        		break;
+        	case ADD:
+        	case SUB:
+        	case OR:
+        		do_linux_expr(rootnode->kids[1]->type, rootnode->op);
+        		break;
+        	case AND:
+        	case RSH:
+        	case LSH:
+        	case BOR:
+        	case BAND:
+        	case BXOR:
+        	case DIV:
+        	case MUL:
+        	case MOD:
+        		do_linux_term(rootnode->kids[1]->type, rootnode->op);
+        		break;
+        	case BLOCKBEG:
+        	case BLOCKEND:
+        		break;
+        	case ADDRG:
+        		if (emit_linux_address)
+        			emit_linux_load_address(rootnode->syms[0]);
+        		break;
+        	default:
+        		assert(0);
+        		break;
+	}
+	gen_level--;
+	return ret;
+}
+
+static int functionprocess(List dags){
+	List cp = dags->link;
+	int ret = 0;
+	for (; cp; cp = cp->link){
+		if ((ret = gen_linux_code((Node)(cp->x))) < 0){
+			parse_error("Generate Code Error.","");
+			return ret;
+		}
+	}
+	return ret;
+}
+
 
 Interface x86_linux_interface = {
 		/* type interface */
@@ -1860,7 +1411,6 @@ Interface x86_linux_interface = {
 		{8, 8, 0},		/* doublemetric */
 		{4, 4, 0},		/* pointermetric */
 		{4, 4, 0},		/* structmetric */
-
 		/* function interface. */
 		programbegin,
 		programend,
