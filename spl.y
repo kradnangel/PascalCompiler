@@ -12,7 +12,7 @@ extern char *yytext;
 symtab *ptab;
 symbol *p, *q;
 tree   *t;
-type *pt, *qt;
+type *tp, *qt;
 int temp;
 symbol* pop_term_stack();
 symbol* top_term_stack();
@@ -377,9 +377,9 @@ array_type_decl
 record_type_decl
 :kRECORD field_decl_list kEND
 { 
-	pt = new_record_type("$$$", $2);
- 	add_type_to_table(top_symtab_stack(), pt);
-	$$ = pt;
+	tp = new_record_type("$$$", $2);
+ 	add_type_to_table(top_symtab_stack(), tp);
+	$$ = tp;
 }
 ;
 
@@ -417,20 +417,20 @@ field_decl
 simple_type_decl
 :SYS_TYPE
 {
-	pt = find_type_by_name($1);
-	if(!pt)
+	tp = find_type_by_name($1);
+	if(!tp)
 		parse_error("Undeclared type name",$1);
-	$$ = pt;
+	$$ = tp;
 }
 |yNAME
 {
-	pt = find_type_by_name($1);
-	if (!pt)
+	tp = find_type_by_name($1);
+	if (!tp)
 	{
 		parse_error("Undeclared type name", $1);
 		return 0;
 	}
-	$$ = pt;
+	$$ = tp;
 }
 |oLP name_list oRP
 {
