@@ -22,44 +22,43 @@ symtab *top_call_stack();
 symtab *pop_call_stack();
 symbol *top_call_symbol();
 
-static symtab *ret = NULL;
+static symtab *rtn =NULL;
+static symtab *ret =NULL;
 static symbol *arg = NULL;
 static Symbol p;
 static Symtab ptab;
 static int gen_level = 0;
-static int emit_linux_address = 0;
+static int gen_address = 0;
 static int jump_index = 0;
 extern char datname[FILE_NAME_LEN];
-
-static void emit_linux_write1(int arg_type);
-static void emit_linux_sqrt(int arg_type);
-static void emit_linux_odd(int arg_type);
-static void emit_linux_abs(int arg_type);
-static void emit_linux_sqr(int arg_type);
-static void emit_linux_read1(int arg_type);
-static void emit_linux_writeln(int arg_type);
-static void emit_linux_program_head();
-static void emit_linux_program_prologue(symtab *);
-static void emit_linux_program_epilogue(symtab *);
-static void emit_linux_main_prologue(symtab *);
-static void emit_linux_main_epilogue(symtab *);
-static void emit_linux_routine_prologue(symtab *);
-static void emit_linux_routine_epilogue(symtab *);
-static void emit_linux_local_args(symtab *);
-static void emit_linux_dos_push_op(Type ptype);
-static void emit_linux_load_value(symbol *);
-static void do_linux_function_assign(symtab *,int);
-static void do_linux_procedure_call(symtab *);
-static void do_linux_assign(symbol *, int);
-static void do_linux_expression(Type, int);
-static void do_linux_negate(symbol *);
-static void do_linux_expr(Type, int);
-static void do_linux_term(Type, int);
-static void do_linux_factor(symbol *);
-static void do_linux_array_factor(symbol *);
-static void do_linux_record_factor(symbol *, symbol *);
-static void do_linux_first_arg(int);
-
+static void gen_abs(int arg_type);
+static void gen_odd(int arg_type);
+static void gen_sqr(int arg_type);
+static void gen_sqrt(int arg_type);
+static void gen_read1(int arg_type);
+static void gen_write1(int arg_type);;
+static void gen_writeln(int arg_type);
+static void gen_program_head();
+static void gen_program_prologue(symtab *);
+static void gen_program_epilogue(symtab *);
+static void gen_main_prologue(symtab *);
+static void gen_main_epilogue(symtab *);
+static void gen_routine_prologue(symtab *);
+static void gen_routine_epilogue(symtab *);
+static void gen_local_args(symtab *);
+static void gen_dos_push_op(Type ptype);
+static void gen_load_value(symbol *);
+static void gen_function_assign(symtab *,int);
+static void gen_procedure_call(symtab *);
+static void gen_assign(symbol *, int);
+static void gen_expression(Type, int);
+static void gen_negate(symbol *);
+static void gen_expr(Type, int);
+static void gen_term(Type, int);
+static void gen_factor(symbol *);
+static void gen_array_factor(symbol *);
+static void gen_record_factor(symbol *, symbol *);
+static void gen_first_arg(int);
 static int blockbegin(BlockContext *context){return 0;}
 static int blockend(BlockContext *context){return 0;}
 static int globalvariable(Symbol symbol){return 0;}
@@ -71,11 +70,11 @@ static int allocspace(int n){return n;}
 static int marknode(Node rootnode){return 0;}
 static void defexport(Symbol sym){}
 static void defimport(Symbol sym){}
+
 #ifdef LABEL_RETVAL
 #undef LABEL_RETVAL
 #define LABEL_RETVAL "-4(%ebp)"
 #endif
-
 
 #ifdef LABEL_SLINK
 #undef LABEL_SLINK
@@ -116,19 +115,19 @@ symbol *top_call_symbol(){
     return call_sym[calltime + 1];
 }
 
-static void do_linux_sys_routine(int routine_id, int arg_type){
+static void gen_sys_routine(int routine_id, int arg_type){
 	switch(routine_id){
 		case fABS:
-			emit_linux_abs(arg_type);
+			gen_abs(arg_type);
 			break;
 		case fODD:
-			emit_linux_odd(arg_type);
+			gen_odd(arg_type);
 			break; 
 		case fSQR:
-			emit_linux_sqr(arg_type);
+			gen_sqr(arg_type);
 			break;
 		case fSQRT:
-			emit_linux_sqrt(arg_type);
+			gen_sqrt(arg_type);
 			break;
 		case fSUCC:
 			O "  incl %%eax\n");
@@ -137,23 +136,90 @@ static void do_linux_sys_routine(int routine_id, int arg_type){
 			O "  decl %%eax\n");
 			break;
 		case pREAD:
-			emit_linux_read1(arg_type);
+			gen_read1(arg_type);
 			break;
 		case pWRITE:
-			emit_linux_write1(arg_type);
+			gen_write1(arg_type);
 			break;
 		case pREADLN:
-			emit_linux_read1(arg_type);
+			gen_read1(arg_type);
 			break;
 		case  pWRITELN:
-			emit_linux_writeln(arg_type);
+			gen_writeln(arg_type);
 			break;
 		default:
 			break;
 	}
 }
+static void gen_abs(int arg_type){
+	O "  pushl %%ebp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _abs_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _abs_int\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
+}
 
-static void emit_linux_read1(int arg_type){
+static void gen_odd(int arg_type){
+	O "  pushl %%bp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _odd_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _odd_int\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
+}
+
+static void gen_sqr(int arg_type){
+	O "  pushl %%bp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _sqr_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _sqr_int\n");
+			break;
+		default:
+			break;
+	}
+	O "  addl $8, %%esp\n");
+}
+
+static void gen_sqrt(int arg_type){
+	O "  pushl %%ebp\n");
+	switch(arg_type){
+		case TYPE_BOOLEAN:
+		case TYPE_INTEGER:
+			O "  call _sqrt_int\n");
+			break;
+		case TYPE_CHAR:
+			O "  xorb %%ah,%%ah\n");
+			O "  call _sqrt_int\n");
+			break;
+		default:
+			break;
+		}
+		O "  addl $8, %%esp\n");
+}
+
+static void gen_read1(int arg_type){
 	O "  pushl %%eax\n");
 	O "  pushl %%ebp\n");
 	switch(arg_type){
@@ -176,7 +242,7 @@ static void emit_linux_read1(int arg_type){
 	O "  addl $8, %%esp\n");
 }
 
-static void emit_linux_write1(int arg_type){
+static void gen_write1(int arg_type){
 	switch(arg_type){
 		case TYPE_BOOLEAN:
 		case TYPE_INTEGER:
@@ -200,7 +266,7 @@ static void emit_linux_write1(int arg_type){
 	O "  addl $8, %%esp\n");
 }
 
-static void emit_linux_writeln(int arg_type){
+static void gen_writeln(int arg_type){
 	switch(arg_type){
 		case TYPE_BOOLEAN:
 		case TYPE_INTEGER:
@@ -224,86 +290,18 @@ static void emit_linux_writeln(int arg_type){
 	O "  addl $8, %%esp\n");
 }
 
-static void emit_linux_abs(int arg_type){
-	O "  pushl %%ebp\n");
-	switch(arg_type){
-		case TYPE_BOOLEAN:
-		case TYPE_INTEGER:
-			O "  call _abs_int\n");
-			break;
-		case TYPE_CHAR:
-			O "  xorb %%ah,%%ah\n");
-			O "  call _abs_int\n");
-			break;
-		default:
-			break;
-	}
-	O "  addl $8, %%esp\n");
-}
-
-static void emit_linux_sqr(int arg_type){
-	O "  pushl %%bp\n");
-	switch(arg_type){
-		case TYPE_BOOLEAN:
-		case TYPE_INTEGER:
-			O "  call _sqr_int\n");
-			break;
-		case TYPE_CHAR:
-			O "  xorb %%ah,%%ah\n");
-			O "  call _sqr_int\n");
-			break;
-		default:
-			break;
-	}
-	O "  addl $8, %%esp\n");
-}
-
-static void emit_linux_odd(int arg_type){
-	O "  pushl %%bp\n");
-	switch(arg_type){
-		case TYPE_BOOLEAN:
-		case TYPE_INTEGER:
-			O "  call _odd_int\n");
-			break;
-		case TYPE_CHAR:
-			O "  xorb %%ah,%%ah\n");
-			O "  call _odd_int\n");
-			break;
-		default:
-			break;
-	}
-	O "  addl $8, %%esp\n");
-}
-
-static void emit_linux_sqrt(int arg_type){
-	O "  pushl %%ebp\n");
-	switch(arg_type){
-		case TYPE_BOOLEAN:
-		case TYPE_INTEGER:
-			O "  call _sqrt_int\n");
-			break;
-		case TYPE_CHAR:
-			O "  xorb %%ah,%%ah\n");
-			O "  call _sqrt_int\n");
-			break;
-		default:
-			break;
-		}
-		O "  addl $8, %%esp\n");
-}
-
-static void emit_linux_program_prologue(symtab *ptab){
+static void gen_program_prologue(symtab *ptab){
 	O "\n\n#---program %s ---",ptab->name);
-	emit_linux_program_head();
+	gen_program_head();
 }
 
-static void emit_linux_program_head(){
+static void gen_program_head(){
 	P ".file \"%s\"\n\n", datname);
 	P "sys_call_id = 0x80\n");
 	P "exit_syscall = 0x1\n\n");
 }
 
-static void emit_linux_program_epilogue(symtab *ptab){
+static void gen_program_epilogue(symtab *ptab){
 	symbol *p;
 	O "\n\n.globl _start\n");
 	O "_start:\n");
@@ -387,7 +385,7 @@ static void emit_linux_program_epilogue(symtab *ptab){
 	}
 }
 
-static void emit_linux_main_prologue(symtab *ptab){
+static void gen_main_prologue(symtab *ptab){
 	O"\n\n# --- main routine ----\n");
 	O "  .text\n");
 	O ".globl _main\n");
@@ -397,16 +395,16 @@ static void emit_linux_main_prologue(symtab *ptab){
 	O "  movl %%esp, %%ebp\n");
 }
 
-static void emit_linux_main_epilogue(symtab *ptab){
+static void gen_main_epilogue(symtab *ptab){
 	O"  leave\n");
 	O"  ret\n");
 }
 
-static void emit_linux_routine_prologue(symtab *ptab){
+static void gen_routine_prologue(symtab *ptab){
 	if(ptab->defn == DEF_PROG)
 		return;
 	O "\n\n# routine : %s \n", ptab->name);
-	emit_linux_local_args(ptab);
+	gen_local_args(ptab);
 	O "  .text\n");
 	O ".globl %s\n", ptab->rname);
 	O "  .type %s, @function\n", ptab->rname);
@@ -418,7 +416,7 @@ static void emit_linux_routine_prologue(symtab *ptab){
 	O "  subl $%d, %%esp\n", ptab->local_size);
 }
 
-static void emit_linux_local_args(symtab *ptab){
+static void gen_local_args(symtab *ptab){
 	symbol *p;
 	char tp[10];
 	for(p = ptab->locals; p->next; p = p->next){
@@ -467,7 +465,7 @@ static void emit_linux_local_args(symtab *ptab){
 	}
 }
 
-static void emit_linux_routine_epilogue(symtab *ptab){
+static void gen_routine_epilogue(symtab *ptab){
 	if(ptab->defn == DEF_PROG)
 		return;
 
@@ -490,7 +488,7 @@ static void emit_linux_routine_epilogue(symtab *ptab){
 	O "  .size %s, .-%s\n",	ptab->rname, ptab->rname);
 }
 
-static void emit_linux_dos_push_op(Type ptype){
+static void gen_dos_push_op(Type ptype){
 	switch(ptype->type_id){
     	case  TYPE_BOOLEAN:
     	case  TYPE_INTEGER:
@@ -504,7 +502,7 @@ static void emit_linux_dos_push_op(Type ptype){
 	}
 }
 
-static void emit_linux_load_value(symbol *p){
+static void gen_load_value(symbol *p){
 	if(p->defn == DEF_VARPARA){
 		O"  movl 4(%%ebp), %%ebx\n");
 		switch(p->type->type_id){
@@ -546,7 +544,7 @@ static void emit_linux_load_value(symbol *p){
 	}
 }
 
-static void emit_linux_load_address(symbol *p){
+static void gen_load_address(symbol *p){
 	symtab *ptab;
 	int  i, n;
 	switch(p->defn){
@@ -576,7 +574,7 @@ static void emit_linux_load_address(symbol *p){
 	}
 }
 
-static void emit_linux_load_field(symbol*p){
+static void gen_load_field(symbol*p){
 	if(!p)
 		return;
 	O "  popl %%ebx\n");
@@ -593,7 +591,7 @@ static void emit_linux_load_field(symbol*p){
 	}
 }
 
-static void do_linux_function_assign(symtab *ptab, int srctype){
+static void gen_function_assign(symtab *ptab, int srctype){
 	if(!ptab)
 		return;
 
@@ -615,7 +613,7 @@ static void do_linux_function_assign(symtab *ptab, int srctype){
 	}
 }
 
-static void do_linux_procedure_call(symtab *ptab){
+static void gen_procedure_call(symtab *ptab){
 	symtab *caller = top_symtab_stack();
 	symtab *callee = ptab;
 	int i, n;
@@ -641,10 +639,10 @@ static void do_linux_procedure_call(symtab *ptab){
 	O "  addl $%d, %%esp\n", ptab->args_size + IR->intmetric.size);
 }
 
-static void do_linux_first_arg(int ptype){
-	ret = top_call_stack();
-	if(ret)
-		arg = ret->args;
+static void gen_first_arg(int ptype){
+	rtn = top_call_stack();
+	if(rtn)
+		arg = rtn->args;
 	else
 		return;
 	if(!arg)
@@ -662,7 +660,7 @@ static void do_linux_first_arg(int ptype){
 	}
 }
 
-static void do_linux_args(int ptype){
+static void gen_args(int ptype){
 	arg = top_call_symbol();
 	if(arg->next)
 		arg = arg->next;
@@ -682,7 +680,7 @@ static void do_linux_args(int ptype){
 	}
 }
 
-static void do_linux_assign(symbol *p, int srctype){
+static void gen_assign(symbol *p, int srctype){
 	symtab *ptab;
 	int  i, n;
 	if (!p)
@@ -798,7 +796,7 @@ static void do_linux_assign(symbol *p, int srctype){
 	}
 }
 
-static void do_linux_cond_jump(int true_or_false, Symbol label){
+static void gen_cond_jump(int true_or_false, Symbol label){
 	O "  cmpl $1, %%eax\n");
 	if (true_or_false)
 		O "  jge %s\n", label->name);
@@ -806,15 +804,15 @@ static void do_linux_cond_jump(int true_or_false, Symbol label){
 		O "  jl %s\n", label->name);
 }
 
-static void do_linux_jump(Symbol label){
+static void gen_jump(Symbol label){
 	O "  jmp %s\n", label->name);
 }
 
-static void do_linux_label(Symbol label){
+static void gen_label(Symbol label){
 	O "%s:\n", label->name);
 }
 
-static void do_linux_incr(Symbol sym){
+static void gen_incr(Symbol sym){
 	switch (sym->type->type_id){
     	case TYPE_BOOLEAN:
     	case TYPE_INTEGER:
@@ -829,7 +827,7 @@ static void do_linux_incr(Symbol sym){
 	}
 }
 
-static void do_linux_decr(Symbol sym){
+static void gen_decr(Symbol sym){
 	switch (sym->type->type_id){
     	case TYPE_BOOLEAN:
     	case TYPE_INTEGER:
@@ -844,7 +842,7 @@ static void do_linux_decr(Symbol sym){
 	}
 }
 
-static void do_linux_expression(Type type, int op){
+static void gen_expression(Type type, int op){
 	if (type == NULL){
 		return;
 	}
@@ -891,7 +889,7 @@ static void do_linux_expression(Type type, int op){
 	O "j_%03d:\n", jump_index);
 }
 
-static void do_linux_negate(symbol *p){
+static void gen_negate(symbol *p){
 	if (!p)
 		return;
 	if (p->defn != DEF_VAR && p->defn != DEF_VALPARA && 
@@ -909,7 +907,7 @@ static void do_linux_negate(symbol *p){
 	}
 }
 
-static void do_linux_expr(Type type, int op){
+static void gen_expr(Type type, int op){
 	if (type == NULL){
 		return;
 	}
@@ -942,7 +940,7 @@ static void do_linux_expr(Type type, int op){
 	}
 }
 
-static void do_linux_term(Type type, int op){
+static void gen_term(Type type, int op){
 	if (type == NULL)
 		return;
 	switch(generic(op)){
@@ -985,7 +983,7 @@ static void do_linux_term(Type type, int op){
 	}
 }
 
-static void do_linux_factor(symbol *p){
+static void gen_factor(symbol *p){
 	symtab *ptab;
 	int i, n;
 	if (!p)
@@ -1061,17 +1059,17 @@ static void do_linux_factor(symbol *p){
 	}
 }
 
-static void do_linux_not_factor(symbol *p){
+static void gen_not_factor(symbol *p){
 	if (!p)
 		return;
 	if (p->type->type_id!= TYPE_BOOLEAN)
 		TYPEERR
-	do_linux_factor(p);
+	gen_factor(p);
 	O "  andl $1, %%eax\n");
 	O "  xorl $1, %%eax\n");
 }
 
-static void do_linux_array_factor(symbol *p){
+static void gen_array_factor(symbol *p){
 	if (p->type_link->first->v.i >= 0)
 		O "  subl $%d, %%eax\n", p->type_link->first->v.i);
 	else
@@ -1086,7 +1084,7 @@ static void do_linux_array_factor(symbol *p){
 	O "  pushl %%edx\n");
 }
 
-static void do_linux_record_factor(symbol *var, symbol *p){
+static void gen_record_factor(symbol *var, symbol *p){
 	if (!p || !var || p->defn != DEF_FIELD)
 		return;
 	O "  popl %%eax\n");
@@ -1099,22 +1097,22 @@ static void do_linux_record_factor(symbol *var, symbol *p){
 }
 
 static int programbegin(Env *global){
-	emit_linux_program_prologue(global->u.program.tab);
+	gen_program_prologue(global->u.program.tab);
 	return 0;
 }
 
 static int programend(Env *global){
-	emit_linux_program_epilogue(global->u.program.tab);
+	gen_program_epilogue(global->u.program.tab);
 	return 0;
 }
 
 static int mainbegin(Env *main){
-	emit_linux_main_prologue(main->u.main.tab);
+	gen_main_prologue(main->u.main.tab);
 	return 0;
 }
 
 static int mainend(Env *main){
-	emit_linux_main_epilogue(main->u.main.tab);
+	gen_main_epilogue(main->u.main.tab);
 	return 0;
 }
 
@@ -1128,13 +1126,13 @@ static int gen_linux_code(Node rootnode){
     			return ERROR_SUCCESS;
     		}
     		gen_linux_code(rootnode->kids[0]);
-    		do_linux_first_arg(rootnode->kids[0]->type->type_id);
+    		gen_first_arg(rootnode->kids[0]->type->type_id);
     		pnode = rootnode->kids[1];
     		while(pnode){
     			if (!pnode->kids[0])
     				break;
     			gen_linux_code(pnode->kids[0]);
-    			do_linux_args(pnode->kids[0]->type->type_id);
+    			gen_args(pnode->kids[0]->type->type_id);
     			pnode = pnode->kids[1];
     		}
     		gen_level--;
@@ -1154,7 +1152,7 @@ static int gen_linux_code(Node rootnode){
     				return ret;
     			}
     		}
-    		emit_linux_dos_push_op(rootnode->kids[0]->type);
+    		gen_dos_push_op(rootnode->kids[0]->type);
     		if (rootnode->kids[1]){
     			ret = gen_linux_code(rootnode->kids[1]);
     			if (ret < 0){
@@ -1175,7 +1173,7 @@ static int gen_linux_code(Node rootnode){
     				return ret;
     			}
     		}
-    		emit_linux_dos_push_op(rootnode->kids[0]->type);
+    		gen_dos_push_op(rootnode->kids[0]->type);
     		if (rootnode->kids[1]){
     			ret = gen_linux_code(rootnode->kids[1]);
     			if (ret < 0){
@@ -1196,7 +1194,7 @@ static int gen_linux_code(Node rootnode){
     				return ret;
     			}
     		}
-    		emit_linux_dos_push_op(rootnode->kids[0]->type);
+    		gen_dos_push_op(rootnode->kids[0]->type);
     		if (rootnode->kids[1]){
     			ret = gen_linux_code(rootnode->kids[1]);
     			if (ret < 0){
@@ -1206,8 +1204,8 @@ static int gen_linux_code(Node rootnode){
     		}
     		break;
     	case ARRAY:
-    		emit_linux_load_address(rootnode->syms[0]);
-    		emit_linux_dos_push_op(find_type_by_id(TYPE_INTEGER));
+    		gen_load_address(rootnode->syms[0]);
+    		gen_dos_push_op(find_type_by_id(TYPE_INTEGER));
     		if (rootnode->kids[0]){
     			ret = gen_linux_code(rootnode->kids[0]);
     			if (ret < 0){
@@ -1247,27 +1245,27 @@ static int gen_linux_code(Node rootnode){
 
 	switch (generic(rootnode->op)){
         	case ARRAY:
-        		do_linux_array_factor(rootnode->syms[0]);
+        		gen_array_factor(rootnode->syms[0]);
         		break;
         	case CNST:
-        		do_linux_factor(rootnode->syms[0]);
+        		gen_factor(rootnode->syms[0]);
         		break;
         	case FIELD:
-        		emit_linux_load_address(rootnode->syms[0]);
-        		emit_linux_dos_push_op(find_type_by_id(TYPE_INTEGER));
-        		do_linux_record_factor(rootnode->syms[0], rootnode->syms[1]);
+        		gen_load_address(rootnode->syms[0]);
+        		gen_dos_push_op(find_type_by_id(TYPE_INTEGER));
+        		gen_record_factor(rootnode->syms[0], rootnode->syms[1]);
         		break;
         	case HEADER:
-        		emit_linux_routine_prologue(rootnode->symtab);
+        		gen_routine_prologue(rootnode->symtab);
         		break;
         	case TAIL:
-        		emit_linux_routine_epilogue(rootnode->symtab);
+        		gen_routine_epilogue(rootnode->symtab);
         		break;
         	case NOT:
-        		do_linux_not_factor(rootnode->kids[0]->syms[0]);
+        		gen_not_factor(rootnode->kids[0]->syms[0]);
         		break;
         	case NEG:
-        		do_linux_negate(rootnode->kids[0]->syms[0]);
+        		gen_negate(rootnode->kids[0]->syms[0]);
         		break;
         	case ASGN:{
         			p = rootnode->kids[0]->syms[0];
@@ -1276,7 +1274,7 @@ static int gen_linux_code(Node rootnode){
         			if (p->defn == DEF_FUNCT){
         				ptab = find_routine(p->name);
         				if(ptab)
-        					do_linux_function_assign(ptab, rootnode->kids[0]->type->type_id);
+        					gen_function_assign(ptab, rootnode->kids[0]->type->type_id);
         				else{
         					parse_error("Identifier Undeclared .", p->name);
         					gen_level --;
@@ -1284,15 +1282,15 @@ static int gen_linux_code(Node rootnode){
         				}
         			}
         			else
-        				do_linux_assign(p, rootnode->kids[0]->type->type_id);
+        				gen_assign(p, rootnode->kids[0]->type->type_id);
         		}
         		break;
         	case CALL:
-        		do_linux_procedure_call(rootnode->symtab);
+        		gen_procedure_call(rootnode->symtab);
         		pop_call_stack();
         		break;
         	case SYS:
-        		emit_linux_address = 1;		
+        		gen_address = 1;		
         		if ((rootnode->kids[0] == NULL) || (rootnode->kids[0]->kids[0] == NULL) ||
         			(rootnode->kids[0]->kids[1] == NULL)){
         			if (rootnode->kids[0]){
@@ -1301,7 +1299,7 @@ static int gen_linux_code(Node rootnode){
         				else
         					gen_linux_code(rootnode->kids[0]);
         			}
-        			do_linux_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->type->type_id);
+        			gen_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->type->type_id);
         		}
         		else{
                     #if DEBUG & SYSTEM_CALL_DEBUG
@@ -1311,44 +1309,44 @@ static int gen_linux_code(Node rootnode){
         			}
                     #endif
         			gen_linux_code(rootnode->kids[0]->kids[0]);
-        			do_linux_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->kids[0]->type->type_id);
+        			gen_sys_routine(rootnode->u.sys_id, rootnode->kids[0]->kids[0]->type->type_id);
         			pnode = rootnode->kids[0]->kids[1];
         			while(pnode){
         					if (!pnode->kids[0])
         						break;
         					gen_linux_code(pnode->kids[0]);
-        					do_linux_sys_routine(rootnode->u.sys_id, pnode->kids[0]->type->type_id);
+        					gen_sys_routine(rootnode->u.sys_id, pnode->kids[0]->type->type_id);
         					pnode = pnode->kids[1];
         			}
         		}
-        		emit_linux_address = 0;	
+        		gen_address = 0;	
         		break;
         	case COND:
-        		do_linux_cond_jump(rootnode->u.cond.true_or_false, rootnode->u.cond.label);
+        		gen_cond_jump(rootnode->u.cond.true_or_false, rootnode->u.cond.label);
         		break;
         	case JUMP:
-        		do_linux_jump(rootnode->syms[0]);
+        		gen_jump(rootnode->syms[0]);
         		break;
         	case LABEL:
-        		do_linux_label(rootnode->syms[0]);
+        		gen_label(rootnode->syms[0]);
         		break;
         	case INCR:
         		assert(rootnode->kids[0]->syms[0]);
-        		do_linux_incr(rootnode->kids[0]->syms[0]);
+        		gen_incr(rootnode->kids[0]->syms[0]);
         		break;
         	case DECR:
         		assert(rootnode->kids[0]->syms[0]);
-        		do_linux_decr(rootnode->kids[0]->syms[0]);
+        		gen_decr(rootnode->kids[0]->syms[0]);
         		break;
         	case LOAD:
         		if (rootnode->kids[0] == NULL){
-        			do_linux_factor(rootnode->syms[0]);
+        			gen_factor(rootnode->syms[0]);
         		}
         		else if (generic(rootnode->kids[0]->op) == ARRAY){
-        			emit_linux_load_value(rootnode->kids[0]->syms[0]);
+        			gen_load_value(rootnode->kids[0]->syms[0]);
         		}
         		else
-        			emit_linux_load_field(rootnode->kids[0]->syms[1]);
+        			gen_load_field(rootnode->kids[0]->syms[1]);
         		break;
         	case EQ:
         	case NE:
@@ -1356,12 +1354,12 @@ static int gen_linux_code(Node rootnode){
         	case GE:
         	case LE:
         	case LT:
-        		do_linux_expression(rootnode->kids[1]->type, rootnode->op);
+        		gen_expression(rootnode->kids[1]->type, rootnode->op);
         		break;
         	case ADD:
         	case SUB:
         	case OR:
-        		do_linux_expr(rootnode->kids[1]->type, rootnode->op);
+        		gen_expr(rootnode->kids[1]->type, rootnode->op);
         		break;
         	case AND:
         	case RSH:
@@ -1372,14 +1370,14 @@ static int gen_linux_code(Node rootnode){
         	case DIV:
         	case MUL:
         	case MOD:
-        		do_linux_term(rootnode->kids[1]->type, rootnode->op);
+        		gen_term(rootnode->kids[1]->type, rootnode->op);
         		break;
         	case BLOCKBEG:
         	case BLOCKEND:
         		break;
         	case ADDRG:
-        		if (emit_linux_address)
-        			emit_linux_load_address(rootnode->syms[0]);
+        		if (gen_address)
+        			gen_load_address(rootnode->syms[0]);
         		break;
         	default:
         		assert(0);
@@ -1403,15 +1401,13 @@ static int functionprocess(List dags){
 
 
 Interface x86_linux_interface = {
-		/* type interface */
-		{1, 1, 0},		/* charmetric */
-		{2, 2, 0},		/* shortmetric */
-		{4, 4, 0},		/* intmetric */
-		{4, 4, 0},		/* floatmetric */
-		{8, 8, 0},		/* doublemetric */
-		{4, 4, 0},		/* pointermetric */
-		{4, 4, 0},		/* structmetric */
-		/* function interface. */
+		{1, 1, 0},		// char
+		{2, 2, 0},		// short
+		{4, 4, 0},		// int
+		{4, 4, 0},		// float
+		{8, 8, 0},		// double
+		{4, 4, 0},		// pointer
+		{4, 4, 0},		// struct
 		programbegin,
 		programend,
 		mainbegin,
