@@ -22,7 +22,7 @@ void clear();
 
 int yyparse();
 
-int dump_ast = 1;
+int dump_ast = 0;
 int dump_dag = 0;
 int dump_asm = 0;
 
@@ -98,7 +98,7 @@ int main(int argc, char **argv)
 
     if (argc == 1)
     {
-        printf("\nUsage :%s [-d stad] filename[.pas]\n\n", argv[0]);
+        printf("\nUsage :%s filename[.pas]\n\n", argv[0]);
         return 1;
     }
 
@@ -109,48 +109,7 @@ int main(int argc, char **argv)
     dargc = 0;
     dargv = malloc(argc * sizeof(char *));
 
-    /*
-     * arguments not recognized by main is pased to 
-     * target program_begin
-     */
-    while(arg)
-    {
-        if (**(arg) == '-')
-        {
-            if (arg[0][1] == 'd')
-            {
-                    char *p = arg[1];
-                    while (*p)
-                    {
-                        switch(*p++)
-                        {
-                        case 'a':
-                            dump_ast = 1;
-                            break;
-                        case 'd':
-                            dump_dag = 1;
-                            break;
-                        default:
-                            printf("Unkown dump option %c.\n", *(p - 1));
-                            break;
-                        }
-                    }
-		arg++;
-                arg++;
-                break;
-            }
-            else {
-                dargv[dargc++] = *arg++;
-                dargv[dargc++] = *arg++;
-                break;
-            }
-        }
-        else
-        {
-            prepare_file(arg[0]);
-            break;
-        }
-    }
+    prepare_file(arg[0]);
 
     global_env.u.program.argc = dargc;
     global_env.u.program.argv = dargv;

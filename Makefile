@@ -10,14 +10,14 @@ SOURCE= common.h \
 				x86rtl.asm \
 				rule.c \
 				lex.yy.c \
-				alloc.c \
+				new.c \
 				tree.c \
 				tree.h \
 				list.c \
 				dag.h \
 				dag.c \
 				x86linux.c \
-				opti.c
+				cf.c
 
 OBJS=error.o \
 			  lex.yy.o \
@@ -26,11 +26,11 @@ OBJS=error.o \
 			  type.o \
 			  rule.o \
 			  tree.o \
-			  alloc.o \
+			  new.o \
 			  list.o \
 			  dag.o \
 			  x86linux.o \
-			  opti.o
+			  cf.o
 
 MAKED = lex.yy.c rule.c rule.h
 
@@ -41,7 +41,7 @@ all: $(NAME)
 dag.o: dag.c common.h
 	gcc -g -Wall -c $<
 
-alloc.o: alloc.c common.h
+new.o: new.c common.h
 	gcc -g -Wall -c $<
 
 %.o:%.c $(DOTH)
