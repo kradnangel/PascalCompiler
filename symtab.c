@@ -34,8 +34,7 @@ int align(int bytes) {
     return bytes;
 }
 
-symtab *new_symtab(symtab *parent)
-{
+symtab *new_symtab(symtab *parent) {
     symtab *p;
 
     NEW0(p, PERM);
@@ -48,8 +47,7 @@ symtab *new_symtab(symtab *parent)
     p->localtab = NULL;
     p->locals = NULL;
     p->type_link = NULL;
-    if(parent)
-    {
+    if(parent) {
         p->level = parent->level+1;
     }
     else
@@ -67,8 +65,7 @@ symtab *new_symtab(symtab *parent)
     return p;
 }
 
-symbol *new_symbol(char *name, int defn, int typeid)
-{
+symbol *new_symbol(char *name, int defn, int typeid) {
     symbol *p;
     static int imp_index = 0;
 
@@ -86,14 +83,13 @@ symbol *new_symbol(char *name, int defn, int typeid)
     p->type = find_type_by_id(typeid);
     p->offset = 0;
     p->next = NULL;
-    p->lchild = p->rchild = NULL;
+    p->nextsym = NULL;
     p->tab = NULL;
     p->type_link = NULL;
     return p;
 
 }
-symbol *clone_symbol(symbol *origin)
-{
+symbol *clone_symbol(symbol *origin) {
     symbol *p;
     if(!origin)
         return NULL;
@@ -115,8 +111,7 @@ symbol *clone_symbol(symbol *origin)
     return p;
 }
 
-symbol *clone_symbol_list(symbol *head)
-{
+symbol *clone_symbol_list(symbol *head) {
     symbol *new_list;
     symbol *p;
     symbol *q;
@@ -125,8 +120,7 @@ symbol *clone_symbol_list(symbol *head)
     q = head;
     new_list = p = clone_symbol(q);
     q = p->next;
-    while(q)
-    {
+    while(q) {
         p->next = clone_symbol(q);
         p = p->next;
         q = q->next;
@@ -135,12 +129,10 @@ symbol *clone_symbol_list(symbol *head)
     return new_list;
 }
 
-symbol *reverse_parameters(symtab *ptab)
-{
+symbol *reverse_parameters(symtab *ptab) {
     symbol *p,*q;
     symbol *new_list = NULL;
-    for(p = ptab->args;p;)
-    {
+    for(p = ptab->args;p;) {
         q = p;
         p = p->next;
         q->next = new_list;
@@ -150,16 +142,13 @@ symbol *reverse_parameters(symtab *ptab)
     return ptab->args;
 }
 
-void enter_symtab_queue(symtab *tab)
-{
+void enter_symtab_queue(symtab *tab) {
     if (last_symtab < SYMTAB_QUEUE_SIZE)
         symtab_queue[last_symtab ++] = tab;
 }
 
-void add_symbol_to_table(symtab*tab, symbol *sym)
-{
-    switch(sym->defn)
-    {
+void add_symbol_to_table(symtab*tab, symbol *sym) {
+    switch(sym->defn) {
     case DEF_FUNCT:
     case DEF_PROC:
     case DEF_VAR:
@@ -176,54 +165,36 @@ void add_symbol_to_table(symtab*tab, symbol *sym)
     }
 }
 
-void add_var_to_localtab(symtab *tab,symbol *sym)
-{
+void add_var_to_localtab(symtab *tab,symbol *sym) {
     symbol *p;
     int i;
 
     if (!tab || !sym)
         return;
 
-    if(!tab->localtab)
-    {
+    if(!tab->localtab) {
         tab->localtab = sym;
         return;
     }
     p = tab->localtab;
-    while(1)
-    {
+    while(1) {
         i = strcmp(sym->name, p->name);
-        if(i > 0)
-        {
-            if(p->rchild)
-                p = p->rchild;
-            else
-            {
-                p->rchild = sym;
-                break;
-            }
-        }
-        else if (i < 0)
-        {
-            if (p->lchild)
-                p = p->lchild;
-            else
-            {
-                p->lchild = sym;
-                break;
-            }
-        }
-        else
-        {
-            parse_error("Duplicate identifier.",
-                        sym->name);
+	if (i != 0) {
+		if (p->nextsym)
+			p = p->nextsym;
+		else {
+			p->nextsym = sym;
+			break;
+		     }
+	}
+        else {
+            parse_error("Duplicate identifier.", sym->name);
             break;
         }
     }
 }
 
-void add_local_to_table(symtab *tab,symbol *sym)
-{
+void add_local_to_table(symtab *tab,symbol *sym) {
     if(!tab|| !sym)
         return;
     if(sym->defn == DEF_CONST)
@@ -232,17 +203,14 @@ void add_local_to_table(symtab *tab,symbol *sym)
     else
         sprintf(sym->rname, "v%c_%03d",
                 sym->name[0],new_index(var));
-    if(tab->level)
-    {
+    if(tab->level) {
         if(tab->defn == DEF_FUNCT
-                && sym->defn != DEF_FUNCT)
-        {
+                && sym->defn != DEF_FUNCT) {
             sym->offset = tab->local_size + 3 * IR->intmetric.size;
             tab->local_size += align(get_symbol_size(sym));
         }
         else if (tab->defn == DEF_PROC
-                 && sym->defn != DEF_PROC)
-        {
+                 && sym->defn != DEF_PROC) {
             sym->offset = tab->local_size + IR->intmetric.size;
             tab->local_size += align(get_symbol_size(sym));
         }
@@ -254,8 +222,7 @@ void add_local_to_table(symtab *tab,symbol *sym)
     add_var_to_localtab(tab,sym);
 }
 
-void add_args_to_table(symtab *tab, symbol *sym)
-{
+void add_args_to_table(symtab *tab, symbol *sym) {
     symbol *p;
     int var_size;
     if(!tab|| !sym)
@@ -275,8 +242,7 @@ void add_args_to_table(symtab *tab, symbol *sym)
 
 extern KEYENTRY Keytable[];
 
-void make_system_symtab()
-{
+void make_system_symtab() {
     int i,n;
     symtab *ptab;
     type *pt;
@@ -324,11 +290,9 @@ void make_system_symtab()
                               TYPE_UNKNOWN);
     n = 1;
 
-    for(i = 0 ; i < Keytable_size; i++)
-    {
+    for(i = 0 ; i < Keytable_size; i++) {
         if(Keytable[i].key == SYS_FUNCT ||
-                Keytable[i].key == SYS_PROC )
-        {
+                Keytable[i].key == SYS_PROC ) {
             System_symtab[n]=
                 new_sys_symbol(Keytable[i]);
             n++;
@@ -342,8 +306,7 @@ void make_system_symtab()
     ptab->local_size = n;
 }
 
-symtab* new_sys_symbol(KEYENTRY entry)
-{
+symtab* new_sys_symbol(KEYENTRY entry) {
     symtab *ptab;
     symbol *p;
 
@@ -381,8 +344,7 @@ symtab* new_sys_symbol(KEYENTRY entry)
     p->tab = ptab;
     p->type_link = NULL;
     ptab->locals = p;
-    if(entry.arg_type)
-    {
+    if(entry.arg_type) {
         NEW0(p, PERM);
 
         if(!p)
@@ -395,17 +357,14 @@ symtab* new_sys_symbol(KEYENTRY entry)
     return ptab;
 }
 
-int is_symbol(symbol*p,char*name)
-{
+int is_symbol(symbol*p,char*name) {
     if(strcmp(p->name,name))
         return  0;
     return 1;
 }
 
-int get_symbol_size(symbol*sym)
-{
-    switch(sym->type->type_id)
-    {
+int get_symbol_size(symbol*sym) {
+    switch(sym->type->type_id) {
     case TYPE_INTEGER:
         return  IR->intmetric.size;
     case TYPE_CHAR   :
@@ -438,12 +397,10 @@ int get_symbol_size(symbol*sym)
 
 
 /** find find find **/
-symtab *find_routine(char *name)
-{
+symtab *find_routine(char *name) {
     int i;
     symtab *ptab;
-    for(i=0;i<last_symtab;i++)
-    {
+    for(i=0;i<last_symtab;i++) {
         ptab = symtab_queue[i];
         if(!strcmp(ptab->name,name))
             return ptab;
@@ -451,8 +408,7 @@ symtab *find_routine(char *name)
     return NULL;
 }
 
-symtab *find_sys_routine(int routine_id)
-{
+symtab *find_sys_routine(int routine_id) {
     int i;
     for(i = 1; i < System_symtab[0]->local_size; i++)
         if(System_symtab[i]->id == -routine_id)
@@ -461,8 +417,7 @@ symtab *find_sys_routine(int routine_id)
 }
 
 /* find the field of record typr */
-symbol *find_field(symbol *p,char *name)
-{
+symbol *find_field(symbol *p,char *name) {
     type *pt;
     symbol *q;
 
@@ -476,20 +431,17 @@ symbol *find_field(symbol *p,char *name)
     return NULL;
 }
 
-symbol *find_symbol(symtab *tab,char *name)
-{
+symbol *find_symbol(symtab *tab,char *name) {
     symbol *p;
     symtab *ptab = tab;
     type *pt;
 
-    if(!ptab)
-    {
+    if(!ptab) {
         p = System_symtab[0]->locals;
         p->type = TYPE_UNKNOWN;
         return p;
     }
-    while(ptab)
-    {
+    while(ptab) {
         p = find_local_symbol(ptab,name);
         if(p)
             return p;
@@ -501,8 +453,7 @@ symbol *find_symbol(symtab *tab,char *name)
     }
     return NULL;
 }
-symbol *find_local_symbol(symtab *tab, char *name)
-{
+symbol *find_local_symbol(symtab *tab, char *name) {
     symbol *p;
     symtab *ptab = tab;
     int i;
@@ -511,26 +462,19 @@ symbol *find_local_symbol(symtab *tab, char *name)
     if(!ptab->localtab)
         return NULL;
     p = ptab->localtab;
-    while(p)
-    {
+    while(p) {
         i = strcmp(name, p->name);
-        if(i > 0)
-            p = p->rchild;
-        else if(i < 0)
-            p = p->lchild;
-        else
-            return p;
+	if (i == 0) return p;
+	else p = p->nextsym;        
     }
     return NULL;
 }
 
-symbol *find_element(symtab *tab,char *name)
-{
+symbol *find_element(symtab *tab,char *name) {
     symbol *p;
     symtab *ptab = tab;
     type *pt;
-    while(ptab)
-    {
+    while(ptab) {
         for(pt = ptab->type_link; pt; pt = pt->next)
             for(p = pt->first; p; p = p->next)
                 if(is_symbol(p,name))
@@ -541,21 +485,18 @@ symbol *find_element(symtab *tab,char *name)
 }
 
 /** symtab stack **/
-symtab *pop_symtab_stack()
-{
+symtab *pop_symtab_stack() {
     if(symtab_tos == SYMTAB_STACK_SIZE)
         internal_error("Symtab stack underflow.");
     return symtab_stack[++symtab_tos];
 }
-void push_symtab_stack (symtab *tab)
-{
+void push_symtab_stack (symtab *tab) {
     if(symtab_tos== -1)
         internal_error("Symtab stack overflow.");
     else
         symtab_stack[symtab_tos--] = tab;
 }
 
-symtab *top_symtab_stack()
-{
+symtab *top_symtab_stack() {
     return symtab_stack[symtab_tos + 1];
 }

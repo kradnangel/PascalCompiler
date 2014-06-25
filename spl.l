@@ -7,9 +7,7 @@
 #include _YTAB_H_
 
 int Keytable_size = 52;
-extern int line_no;					/* line no. */
-extern int line_pos;				/* position of line. */
-extern char line_buf[];				/* buffer of current line. */
+extern int line_no;
 
 extern YYSTYPE	yylval;
 
@@ -163,14 +161,13 @@ KEYENTRY Keytable[] = {
 
 static int check(char *lex)
 {
-	int left = 0, right = Keytable_size;
-	int mid = (left + right) / 2;
+	int mid = 0;
 	char *p;
 	
 	for (p = lex; *p; p++)
 		*p = tolower(*p);
 
-	while (mid != left && mid != right)
+	while (mid++ <= Keytable_size)
 	{
 		if (!strcmp(Keytable[mid].name, lex))
 		{
@@ -191,12 +188,6 @@ static int check(char *lex)
 			else printf("\n");
 			return Keytable[mid].key;
 		}
-		else if (strcmp(Keytable[mid].name, lex) < 0)
-			left = mid;
-		else if (strcmp(Keytable[mid].name, lex) > 0)
-			right = mid;
-
-		mid = (left + right) / 2;
 	}
 
 	printf("token: yNAME, yylval.p_char = %s.\n", yylval.p_char);

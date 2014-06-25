@@ -1,6 +1,21 @@
 #ifndef		_SYMTAB_H
 #define 	_SYMTAB_H
 
+#define make_global_symtab() new_symtab(NULL)
+#define MAX_SYS_ROUTINE		(24)
+
+typedef union _value_ value;
+typedef union _value_ * Value;
+
+typedef struct _symbol_ symbol;
+typedef struct _symbol_ * Symbol;
+
+typedef struct _type_ type;
+typedef struct _type_ * Type;
+
+typedef struct _symbol_head_ symtab;
+typedef struct _symbol_head_ * Symtab;
+
 union _value_ {
     char c;
     char *s;
@@ -14,15 +29,6 @@ union _value_ {
     void (*g)(void);
 };
 
-typedef union _value_ value;
-typedef union _value_ * Value;
-
-typedef struct _symbol_ symbol;
-typedef struct _symbol_ * Symbol;
-
-typedef struct _type_ type;
-typedef struct _type_ * Type;
-
 struct _symbol_
 {
     char name[NAME_LEN];
@@ -33,7 +39,7 @@ struct _symbol_
     int offset;
     value v;
     struct _symbol_ *next;
-    struct _symbol_ *lchild, *rchild;
+    struct _symbol_ *nextsym;	
     struct _symbol_head_ *tab;
     struct _type_	*type_link;
 };
@@ -69,16 +75,12 @@ struct _symbol_head_
     struct _symbol_head_ *parent;
 };
 
-typedef struct _symbol_head_ symtab;
-typedef struct _symbol_head_ * Symtab;
 
-#define make_global_symtab() new_symtab(NULL)
-
-#define MAX_SYS_ROUTINE		(24)
 
 int Cur_level;
 int Routing_id;
 
+void make_system_symtab();
 void push_symtab_stack(symtab *);
 void add_symbol_to_table(symtab *, symbol *);
 void add_local_to_table(symtab *, symbol *);
@@ -87,6 +89,10 @@ void add_var_to_localtab(symtab *, symbol *);
 void add_enum_elements(type *, symbol *symlist);
 void add_type_to_table(symtab *ptab, type *pt);
 void set_subrange_bound(type *, int , int );
+void set_subrange_bound(type *pt,int lower,int upper);
+void add_enum_elements(type *pt, symbol *symlist);
+
+type *new_array_type(char *name,type *pindex, type *pelement);
 type *new_system_type(int);
 type *new_subrange_type(char *, int);
 type *new_enum_type(char *);
@@ -95,9 +101,13 @@ type *clone_type(type *);
 type *find_type_by_name(char *);
 type *find_type_by_id(int);
 type *find_local_type(char *);
+type *find_local_type_by_name(char *name);
+
 int is_symbol(symbol *p, char *);
 int get_symbol_size(symbol *);
 int get_type_size(type *);
+int align(int);
+int stoi(char *s,int radix);
 
 symtab *Global_symtab;
 symtab *System_symtab[MAX_SYS_ROUTINE];
@@ -115,15 +125,6 @@ symbol *find_local_symbol(symtab *, char *);
 symbol *new_symbol(char *, int , int );
 symbol *clone_symbol(symbol *);
 symbol *clone_symbol_list(symbol *);
-
-int stoi(char *s,int radix);
-void set_subrange_bound(type *pt,int lower,int upper);
-void add_enum_elements(type *pt, symbol *symlist);
-type *new_array_type(char *name,type *pindex, type *pelement);
-type *find_local_type_by_name(char *name);
-
-int align(int);
-void make_system_symtab();
 symbol *reverse_parameters(symtab *);
 
 #endif
