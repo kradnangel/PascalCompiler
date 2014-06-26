@@ -169,7 +169,7 @@ static void gen_abs(int arg_type){
 }
 
 static void gen_odd(int arg_type){
-	O "  pushl %%bp\n");
+	O "  pushl %%ebp\n");
 	switch(arg_type){
 		case TYPE_BOOLEAN:
 		case TYPE_INTEGER:
@@ -186,7 +186,7 @@ static void gen_odd(int arg_type){
 }
 
 static void gen_sqr(int arg_type){
-	O "  pushl %%bp\n");
+	O "  pushl %%ebp\n");
 	switch(arg_type){
 		case TYPE_BOOLEAN:
 		case TYPE_INTEGER:
