@@ -291,7 +291,6 @@ static void gen_writeln(int arg_type){
 }
 
 static void gen_program_prologue(symtab *ptab){
-	O "\n\n#---program %s ---",ptab->name);
 	gen_program_head();
 }
 
@@ -309,8 +308,6 @@ static void gen_program_epilogue(symtab *ptab){
 	O "  movl $0, %%ebx\n");
 	O "  movl $exit_syscall, %%eax\n");
 	O "  int  $sys_call_id\n");
-	O ".ident	\"SPL: 0.1.5\"\n");
-	O "\n#.bss variables\n");
 	for(p = ptab->locals; p; p = p->next){
 		if (p->defn != DEF_CONST){
 				switch (p->type->type_id){
@@ -386,7 +383,6 @@ static void gen_program_epilogue(symtab *ptab){
 }
 
 static void gen_main_prologue(symtab *ptab){
-	O"\n\n# --- main routine ----\n");
 	O "  .text\n");
 	O ".globl _main\n");
 	O "  .type _main, @function\n");
@@ -403,7 +399,6 @@ static void gen_main_epilogue(symtab *ptab){
 static void gen_routine_prologue(symtab *ptab){
 	if(ptab->defn == DEF_PROG)
 		return;
-	O "\n\n# routine : %s \n", ptab->name);
 	gen_local_args(ptab);
 	O "  .text\n");
 	O ".globl %s\n", ptab->rname);
